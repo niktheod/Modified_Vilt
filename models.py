@@ -30,7 +30,7 @@ class ViltSetEmbeddings(nn.Module):
         # Initialize the image level positional embeddings if needed
         self.img_lvl_pos_embeddings = img_lvl_pos_embeddings
         if img_lvl_pos_embeddings:
-            self.set_positional_embedding = nn.Parameter(torch.randn(set_size, seq_len, emb_dim))
+            self.img_position_embedding = nn.Parameter(torch.randn(set_size, seq_len, emb_dim))
 
     def forward(
         self,
@@ -67,7 +67,7 @@ class ViltSetEmbeddings(nn.Module):
         # Stack all the visual embeddings together to create the embedding representation of the whole set
         visual_embeds_tensor = torch.stack(visual_embeds)
         if self.img_lvl_pos_embeddings:  # add the image level positional embeddings if needed
-            visual_embeds_tensor += self.set_positional_embedding
+            visual_embeds_tensor += self.img_position_embedding
 
         # Reshape the visual embeddings from shape (batch_size, num_images, seq_length, emb_dimension) to (batch_size, [num_imges * seq_length], emb_dimension)
         # in order for the attention layer to be able to process it, as it can not process 4D tensors.

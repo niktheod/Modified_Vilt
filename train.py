@@ -56,6 +56,22 @@ def save_plots(results: Tuple[List[float], List[float], List[float], List[float]
     plt.clf()
 
 
+from prettytable import PrettyTable
+def count_parameters(model):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    cnt = 0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad: continue
+        params = parameter.numel()
+        table.add_row([name, params])
+        cnt += 1
+        total_params+=params
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    return total_params
+
+
 
 def train(hyperparameters: defaultdict,
           dataset: str,
@@ -116,7 +132,7 @@ def train(hyperparameters: defaultdict,
 
     batch_size = hyperparameters["batch_size"]
 
-    # Define the train anc val dataloaders
+    # Define the train and val dataloaders
     train_loader = DataLoader(train_set,
                               batch_size=batch_size,
                               shuffle=True,
@@ -141,7 +157,7 @@ def train(hyperparameters: defaultdict,
     # they were initialized randomly), then we set requires_grad = False for all the other parameters.
     if not fine_tune_all and pretrained_model:
         for name, parameter in model.named_parameters():
-            if name != "model.vilt.model.embeddings.set_positional_embedding":
+            if name != "model.vilt.model.embeddings.img_position_embedding":
                 parameter.requires_grad = False
 
     # Define a new VQA head based on which dataset is used. This will also set automatically requires_grad = True for the classifier of the model
@@ -152,8 +168,17 @@ def train(hyperparameters: defaultdict,
         nn.Linear(1536, num_answers)
     ).to(device)
 
+    print("Parameters to be trained: ")
+    count_parameters(model)
+
     weight_decay = hyperparameters["weight_decay"] if hyperparameters["weight_decay"] is not None else 0
-    optimizer = torch.optim.Adam(model.parameters(), lr=hyperparameters["lr"], weight_decay=weight_decay)
+
+    optimizer_name = "adam" if hyperparameters["optimizer_name"] is None else hyperparameters["optimizer_name"]
+
+    if optimizer_name == "adam":
+        optimizer = torch.optim.Adam(model.parameters(), lr=hyperparameters["lr"], weight_decay=weight_decay)
+    elif optimizer_name == "adamw":
+        optimizer = torch.optim.AdamW(model.parameters(), lr=hyperparameters["lr"], weight_decay=weight_decay)
 
     epochs = hyperparameters["epochs"]
 
@@ -168,6 +193,7 @@ def train(hyperparameters: defaultdict,
                  "frac_keep": frac_keep,
                  "emb_dim": emb_dim,
                  "epochs": epochs,
+                 "optimizer": optimizer_name,
                  "lr": hyperparameters["lr"],
                  "weight_decay": weight_decay
                  }
