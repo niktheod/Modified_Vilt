@@ -30,7 +30,7 @@ class ViltSetEmbeddings(nn.Module):
         # Initialize the image level positional embeddings if needed
         self.img_lvl_pos_embeddings = img_lvl_pos_embeddings
         if img_lvl_pos_embeddings:
-            self.img_position_embedding = nn.Parameter(torch.randn(set_size, seq_len, emb_dim))
+            self.img_position_embedding = nn.Parameter(torch.zeros(set_size, seq_len, emb_dim))
 
     def forward(
         self,

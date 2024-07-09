@@ -14,6 +14,7 @@ from engine import trainjob
 from models import MultiviewViltForQuestionAnswering
 from nuscenes.nuscenes import NuScenes
 from typing import List, Tuple
+from prettytable import PrettyTable
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -56,7 +57,6 @@ def save_plots(results: Tuple[List[float], List[float], List[float], List[float]
     plt.clf()
 
 
-from prettytable import PrettyTable
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
     total_params = 0
