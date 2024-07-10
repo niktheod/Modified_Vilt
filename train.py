@@ -20,20 +20,6 @@ from prettytable import PrettyTable
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def keep_fraction(dataset, frac_keep, seed):
-    """
-    A function that keeps only a specific fraction of a given dataset.
-    """
-    indices = list(range(len(dataset)))
-    random.seed(seed)
-    random.shuffle(indices)
-    num_keep = int(frac_keep * len(indices))
-    subset_indices = indices[:num_keep]
-    dataset = Subset(dataset, subset_indices)
-
-    return dataset
-
-
 def save_plots(results: Tuple[List[float], List[float], List[float], List[float]], path: str):
     """
     A function to save plots of the results after training is done.
@@ -88,10 +74,13 @@ def train(hyperparameters: defaultdict,
     seed = hyperparameters["seed"] if hyperparameters["seed"] is not None else 42
 
     generator = torch.Generator().manual_seed(seed)  # set a generator for reproducable results
-    frac_keep = hyperparameters["frac_keep"] if hyperparameters["frac_keep"] is not None else 1
+    percentage = hyperparameters["percentage"]
 
     # Define the paths for the train, val, and test sets
-    train_path = f"{qa_path}/train_set.json"
+    if percentage is None or percentage == 100:
+        train_path = f"{qa_path}/train_set.json"
+    else:
+        train_path = f"{qa_path}/train_set_{percentage}.json"
     val_path = f"{qa_path}/val_set.json"
     answers_path = f"{qa_path}/answers.json"
     
@@ -125,10 +114,6 @@ def train(hyperparameters: defaultdict,
                              device=device)
 
         num_answers = len(train_set.answers)
-
-    # Keep only a fraction of the train dataset if wanted
-    if frac_keep < 1:
-        train_set = keep_fraction(train_set, frac_keep, seed)
 
     batch_size = hyperparameters["batch_size"]
 
@@ -190,7 +175,7 @@ def train(hyperparameters: defaultdict,
                  "img_lvl_emb": image_lvl_pos_emb,
                  "fine_tune_all": fine_tune_all,
                  "seed": seed,
-                 "frac_keep": frac_keep,
+                 "percentage": percentage,
                  "emb_dim": emb_dim,
                  "epochs": epochs,
                  "optimizer": optimizer_name,
