@@ -180,7 +180,8 @@ def train(hyperparameters: defaultdict,
                  "epochs": epochs,
                  "optimizer": optimizer_name,
                  "lr": hyperparameters["lr"],
-                 "weight_decay": weight_decay
+                 "weight_decay": weight_decay,
+                 "batch_size": batch_size
                  }
 
     # Save the model and the results
