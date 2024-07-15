@@ -156,7 +156,7 @@ def train(hyperparameters: defaultdict,
             nn.Linear(1536, num_answers)
         ).to(device)
     elif model_variation == "double_vilt":
-        model = MultiviewViltForQuestionAnswering(set_size, img_seq_len, question_seq_len, emb_dim, pretrained_model, pretrained_model, pretrained_model, image_lvl_pos_emb)
+        model = MultiviewViltForQuestionAnswering(set_size, img_seq_len, question_seq_len, emb_dim, pretrained_model, pretrained_model, pretrained_model, image_lvl_pos_emb).to(device)
 
         if not fine_tune_all and pretrained_model:
             for name, parameter in model.named_parameters():
@@ -169,6 +169,8 @@ def train(hyperparameters: defaultdict,
             nn.GELU(),
             nn.Linear(1536, num_answers)
         ).to(device)
+    else:
+        raise ValueError("model_variation should be either 'baseline' or 'double_vilt'")
     
     print("Parameters to be trained: ")
     count_parameters(model)
@@ -187,7 +189,8 @@ def train(hyperparameters: defaultdict,
     results = trainjob(model, epochs, train_loader, val_loader, optimizer, num_answers)
 
     # Define a setup dictionary that will be saved together with the results, in order to be able to remeber what setup gave the corresponding results
-    setup = {"dataset": dataset,
+    setup = {"model_variation": model_variation,
+                "dataset": dataset,
                  "pretrained": pretrained_model,
                  "img_lvl_emb": image_lvl_pos_emb,
                  "fine_tune_all": fine_tune_all,

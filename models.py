@@ -165,7 +165,8 @@ class MultiviewViltForQuestionAnswering(nn.Module):
     """
     A class based on ViltForQuestionAnswering, but it works with a set of images.
     """
-    def __init__(self, set_size: int, img_seq_len: int, question_seq_len, emb_dim: int, pretrained_body: bool, vqa: bool, pretrained_head: bool, img_lvl_pos_emb: bool) -> None:
+    def __init__(self, set_size: int, img_seq_len: int, question_seq_len, emb_dim: int, pretrained_body: bool, vqa: bool, pretrained_head: bool, img_lvl_pos_emb: bool,
+                 device: str = "cuda") -> None:
         super().__init__()
         self.preprocess = MultiviewViltModel(set_size, img_seq_len, emb_dim, pretrained_body, vqa, img_lvl_pos_emb)
         self.img_attn = nn.MultiheadAttention(emb_dim, 12)
@@ -174,6 +175,7 @@ class MultiviewViltForQuestionAnswering(nn.Module):
         self.img_seq_len = img_seq_len
         self.question_seq_len = question_seq_len
         self.emb_dim = emb_dim
+        self.device = device
 
 
     def forward(
@@ -191,29 +193,37 @@ class MultiviewViltForQuestionAnswering(nn.Module):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None
     ):
-        first_output = self.baseline(input_ids, attention_mask, token_type_ids, pixel_values, pixel_mask, head_mask, inputs_embeds, image_embeds,
-                                     labels, output_attentions, output_hidden_states, return_dict)
+        # Get the output from the first ViLT (the hidden states)
+        first_output = self.preprocess(input_ids, attention_mask, token_type_ids, pixel_values, pixel_mask, head_mask, inputs_embeds, image_embeds,
+                                     labels, output_attentions, output_hidden_states, return_dict).last_hidden_state
         
+        batch_size = first_output.shape[0]
+
+        # Get the [CLS] tokens of the question and of each image in the image set
         idx = 0
-        
-        question = first_output.last_hidden_state[:, idx]
+        question = first_output[:, idx]
         idx += self.question_seq_len
 
         images = []
         for _ in range(self.set_size):
-            images.append(first_output.last_hidden_state[:, idx])
+            images.append(first_output[0, idx])
             idx += self.img_seq_len
 
+        # Concatenate the [CLS] tokens of the images in the image set
         images = torch.stack(images)
         
+        # Get the attention scores of the question-guided attention on the images. Each score will show how relevant is each image for the question
         _, attn_scores = self.img_attn(question, images, images)
 
-        image_set = torch.zeros(self.img_seq_len, self.emb_dim)
-        idx = self.question_seq_len
-        
+        # Initialize a tensor that will represent the image set
+        image_set = torch.zeros(batch_size, self.img_seq_len, self.emb_dim).to(self.device)
+
+        # Create an embedded representation for the image set that is a weighted average of the images based on their attention score
+        idx = self.question_seq_len        
         for i in range(self.set_size):
-            image_set += attn_scores[i] * first_output.last_hidden_state[0, idx:(idx+self.img_seq_len)]
+            image_set += attn_scores[:, i].unsqueeze(1).unsqueeze(2) * first_output[:, idx:(idx+self.img_seq_len)]
             idx += self.img_seq_len
 
-        return self.final_model(inputs_embeds=first_output.last_hidden_state[:, self.question_seq_len], image_embeds=image_set)
+        # Pass the question represantetion and the image set representation in a classic ViltForQuestionAnswering
+        return self.final_model(inputs_embeds=first_output[:, :self.question_seq_len], image_embeds=image_set, labels=labels)
     
