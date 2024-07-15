@@ -11,7 +11,7 @@ from collections import defaultdict
 from isvqa_data_setup import ISVQA
 from nuscenesqa_data_setup import NuScenesQA
 from engine import trainjob
-from models import MultiviewViltForQuestionAnswering
+from models import MultiviewViltForQuestionAnswering, MultiviewViltForQuestionAnsweringBaseline
 from nuscenes.nuscenes import NuScenes
 from typing import List, Tuple
 from prettytable import PrettyTable
@@ -60,6 +60,7 @@ def count_parameters(model):
 
 
 def train(hyperparameters: defaultdict,
+          model_variation: str,
           dataset: str,
           qa_path: str,
           nuscenes_path: str,
@@ -129,30 +130,46 @@ def train(hyperparameters: defaultdict,
     
     # Define some values necessary for the initialization of the model
     set_size = hyperparameters["set_size"] if hyperparameters["set_size"] is not None else 6
-    seq_len = hyperparameters["seq_len"] if hyperparameters["seq_len"] is not None else 210
+    img_seq_len = hyperparameters["img_seq_len"] if hyperparameters["img_seq_len"] is not None else 210
+    question_seq_len = hyperparameters["question_seq_len"] if hyperparameters["question_seq_len"] is not None else 40
     emb_dim = hyperparameters["emb_dim"] if hyperparameters["emb_dim"] is not None else 768
 
     if emb_dim != 768 and pretrained_model == True:
         raise ValueError("For pretrained ViLT the only valid value of emd_dim is 768")
 
     # Define the model
-    model = MultiviewViltForQuestionAnswering(set_size, seq_len, emb_dim, pretrained_model, pretrained_model, image_lvl_pos_emb).to(device)
+    if model_variation == "baseline":
+        model = MultiviewViltForQuestionAnsweringBaseline(set_size, img_seq_len, emb_dim, pretrained_model, pretrained_model, image_lvl_pos_emb).to(device)
 
-    # If we use pretrained weights and we don't want to fine tune the whole model (we only want to learn the VQA head and the set_positional_embedding because
-    # they were initialized randomly), then we set requires_grad = False for all the other parameters.
-    if not fine_tune_all and pretrained_model:
-        for name, parameter in model.named_parameters():
-            if name != "model.vilt.model.embeddings.img_position_embedding":
-                parameter.requires_grad = False
+        # If we use pretrained weights and we don't want to fine tune the whole model (we only want to learn the VQA head and the set_positional_embedding because
+        # they were initialized randomly), then we set requires_grad = False for all the other parameters.
+        if not fine_tune_all and pretrained_model:
+            for name, parameter in model.named_parameters():
+                if name != "model.vilt.model.embeddings.img_position_embedding":
+                    parameter.requires_grad = False
 
-    # Define a new VQA head based on which dataset is used. This will also set automatically requires_grad = True for the classifier of the model
-    model.model.classifier = nn.Sequential(
-        nn.Linear(emb_dim, 1536),
-        nn.LayerNorm(1536),
-        nn.GELU(),
-        nn.Linear(1536, num_answers)
-    ).to(device)
+        # Define a new VQA head based on which dataset is used. This will also set automatically requires_grad = True for the classifier of the model
+        model.model.classifier = nn.Sequential(
+            nn.Linear(emb_dim, 1536),
+            nn.LayerNorm(1536),
+            nn.GELU(),
+            nn.Linear(1536, num_answers)
+        ).to(device)
+    elif model_variation == "double_vilt":
+        model = MultiviewViltForQuestionAnswering(set_size, img_seq_len, question_seq_len, emb_dim, pretrained_model, pretrained_model, pretrained_model, image_lvl_pos_emb)
 
+        if not fine_tune_all and pretrained_model:
+            for name, parameter in model.named_parameters():
+                if name[:22] != "final_model.classifier" and name[:8] != "img_attn" and name != "preprocess.model.embeddings.img_position_embedding":
+                    parameter.requires_grad = False
+
+        model.final_model.classifier = nn.Sequential(
+            nn.Linear(emb_dim, 1536),
+            nn.LayerNorm(1536),
+            nn.GELU(),
+            nn.Linear(1536, num_answers)
+        ).to(device)
+    
     print("Parameters to be trained: ")
     count_parameters(model)
 

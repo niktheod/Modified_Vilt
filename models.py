@@ -155,15 +155,65 @@ class MultiviewViltForQuestionAnsweringBaseline(nn.Module):
         labels: Optional[torch.LongTensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+        return_dict: Optional[bool] = None
     ) -> Union[SequenceClassifierOutput, Tuple[torch.FloatTensor]]:
         return self.model(input_ids, token_type_ids, attention_mask, pixel_values, pixel_mask, head_mask, inputs_embeds,
                           image_embeds, labels, output_attentions, output_hidden_states, return_dict)
     
 
-class MultiviewViltForQuestionAnsweringBaseline(nn.Module):
+class MultiviewViltForQuestionAnswering(nn.Module):
     """
     A class based on ViltForQuestionAnswering, but it works with a set of images.
     """
-    def __init__(self, set_size: int, seq_len: int, emb_dim: int, pretrained_body: bool, pretrained_head: bool, img_lvl_pos_emb: bool) -> None:
+    def __init__(self, set_size: int, img_seq_len: int, question_seq_len, emb_dim: int, pretrained_body: bool, vqa: bool, pretrained_head: bool, img_lvl_pos_emb: bool) -> None:
         super().__init__()
+        self.preprocess = MultiviewViltModel(set_size, img_seq_len, emb_dim, pretrained_body, vqa, img_lvl_pos_emb)
+        self.img_attn = nn.MultiheadAttention(emb_dim, 12)
+        self.final_model = ViltForQuestionAnswering.from_pretrained("dandelin/vilt-b32-finetuned-vqa")
+        self.set_size = set_size
+        self.img_seq_len = img_seq_len
+        self.question_seq_len = question_seq_len
+        self.emb_dim = emb_dim
+
+
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        token_type_ids: Optional[torch.LongTensor] = None,
+        pixel_values: Optional[torch.FloatTensor] = None,
+        pixel_mask: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        image_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None
+    ):
+        first_output = self.baseline(input_ids, attention_mask, token_type_ids, pixel_values, pixel_mask, head_mask, inputs_embeds, image_embeds,
+                                     labels, output_attentions, output_hidden_states, return_dict)
+        
+        idx = 0
+        
+        question = first_output.last_hidden_state[:, idx]
+        idx += self.question_seq_len
+
+        images = []
+        for _ in range(self.set_size):
+            images.append(first_output.last_hidden_state[:, idx])
+            idx += self.img_seq_len
+
+        images = torch.stack(images)
+        
+        _, attn_scores = self.img_attn(question, images, images)
+
+        image_set = torch.zeros(self.img_seq_len, self.emb_dim)
+        idx = self.question_seq_len
+        
+        for i in range(self.set_size):
+            image_set += attn_scores[i] * first_output.last_hidden_state[0, idx:(idx+self.img_seq_len)]
+            idx += self.img_seq_len
+
+        return self.final_model(inputs_embeds=first_output.last_hidden_state[:, self.question_seq_len], image_embeds=image_set)
+    
