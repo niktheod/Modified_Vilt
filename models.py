@@ -123,9 +123,9 @@ class MultiviewViltModel(nn.Module):
                           image_embeds, image_token_type_idx, output_attentions, output_hidden_states, return_dict)
 
 
-class MultiviewViltForQuestionAnswering(nn.Module):
+class MultiviewViltForQuestionAnsweringBaseline(nn.Module):
     """
-    A class based on ViltForQuestionAnswering, but it works with a set of images.
+    A baseline based on ViltForQuestionAnswering, but it works with a set of images.
     """
     def __init__(self, set_size: int, seq_len: int, emb_dim: int, pretrained_body: bool, pretrained_head: bool, img_lvl_pos_emb: bool) -> None:
         super().__init__()
@@ -160,3 +160,10 @@ class MultiviewViltForQuestionAnswering(nn.Module):
         return self.model(input_ids, token_type_ids, attention_mask, pixel_values, pixel_mask, head_mask, inputs_embeds,
                           image_embeds, labels, output_attentions, output_hidden_states, return_dict)
     
+
+class MultiviewViltForQuestionAnsweringBaseline(nn.Module):
+    """
+    A class based on ViltForQuestionAnswering, but it works with a set of images.
+    """
+    def __init__(self, set_size: int, seq_len: int, emb_dim: int, pretrained_body: bool, pretrained_head: bool, img_lvl_pos_emb: bool) -> None:
+        super().__init__()
