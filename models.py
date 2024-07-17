@@ -165,11 +165,19 @@ class MultiviewViltForQuestionAnswering(nn.Module):
     """
     A class based on ViltForQuestionAnswering, but it works with a set of images.
     """
-    def __init__(self, set_size: int, img_seq_len: int, question_seq_len, emb_dim: int, pretrained_body: bool, vqa: bool, pretrained_head: bool, img_lvl_pos_emb: bool,
+    def __init__(self, set_size: int, img_seq_len: int, question_seq_len, emb_dim: int, pretrained_body: bool, vqa: bool, img_lvl_pos_emb: bool, pretrained_model_path: str = None,
                  device: str = "cuda") -> None:
         super().__init__()
         self.preprocess = MultiviewViltModel(set_size, img_seq_len, emb_dim, pretrained_body, vqa, img_lvl_pos_emb)
-        self.img_attn = nn.MultiheadAttention(emb_dim, 12)
+        
+        
+        if pretrained_model_path is not None:
+            pretrained_dict = torch.load(pretrained_model_path)
+            model_dict = self.preprocess.state_dict()
+            pretrained_dict = {k[11:]: v for k, v in pretrained_dict.items() if k[11:] in model_dict}
+            self.preprocess.load_state_dict(pretrained_dict)
+            
+        self.img_attn = nn.MultiheadAttention(emb_dim, 12, batch_first=True)
         self.final_model = ViltForQuestionAnswering.from_pretrained("dandelin/vilt-b32-finetuned-vqa")
         self.set_size = set_size
         self.img_seq_len = img_seq_len
@@ -201,19 +209,19 @@ class MultiviewViltForQuestionAnswering(nn.Module):
 
         # Get the [CLS] tokens of the question and of each image in the image set
         idx = 0
-        question = first_output[:, idx]
+        questions = first_output[:, idx].unsqueeze(1)
         idx += self.question_seq_len
 
         images = []
         for _ in range(self.set_size):
-            images.append(first_output[0, idx])
+            images.append(first_output[:, idx])
             idx += self.img_seq_len
 
         # Concatenate the [CLS] tokens of the images in the image set
-        images = torch.stack(images)
+        images = torch.stack(images, dim=1)
         
         # Get the attention scores of the question-guided attention on the images. Each score will show how relevant is each image for the question
-        _, attn_scores = self.img_attn(question, images, images)
+        _, attn_scores = self.img_attn(questions, images, images)
 
         # Initialize a tensor that will represent the image set
         image_set = torch.zeros(batch_size, self.img_seq_len, self.emb_dim).to(self.device)
@@ -221,7 +229,7 @@ class MultiviewViltForQuestionAnswering(nn.Module):
         # Create an embedded representation for the image set that is a weighted average of the images based on their attention score
         idx = self.question_seq_len        
         for i in range(self.set_size):
-            image_set += attn_scores[:, i].unsqueeze(1).unsqueeze(2) * first_output[:, idx:(idx+self.img_seq_len)]
+            image_set += attn_scores[:, :, i].unsqueeze(2) * first_output[:, idx:(idx+self.img_seq_len)]
             idx += self.img_seq_len
 
         # Pass the question represantetion and the image set representation in a classic ViltForQuestionAnswering

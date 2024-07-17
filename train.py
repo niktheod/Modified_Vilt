@@ -70,6 +70,7 @@ def train(hyperparameters: defaultdict,
           pretrained_model: bool = True,
           fine_tune_all: bool = False,
           image_lvl_pos_emb: bool = True,
+          best_baseline: str = None,
           device: str = device):
     
     seed = hyperparameters["seed"] if hyperparameters["seed"] is not None else 42
@@ -156,11 +157,12 @@ def train(hyperparameters: defaultdict,
             nn.Linear(1536, num_answers)
         ).to(device)
     elif model_variation == "double_vilt":
-        model = MultiviewViltForQuestionAnswering(set_size, img_seq_len, question_seq_len, emb_dim, pretrained_model, pretrained_model, pretrained_model, image_lvl_pos_emb).to(device)
+        model = MultiviewViltForQuestionAnswering(set_size, img_seq_len, question_seq_len, emb_dim, pretrained_model, pretrained_model, image_lvl_pos_emb,
+                                                  pretrained_model_path=best_baseline).to(device)
 
         if not fine_tune_all and pretrained_model:
             for name, parameter in model.named_parameters():
-                if name[:22] != "final_model.classifier" and name[:8] != "img_attn" and name != "preprocess.model.embeddings.img_position_embedding":
+                if name[:22] != "final_model.classifier" and name[:8] != "img_attn" and name[:10] != "preprocess":
                     parameter.requires_grad = False
 
         model.final_model.classifier = nn.Sequential(
@@ -201,7 +203,8 @@ def train(hyperparameters: defaultdict,
                  "optimizer": optimizer_name,
                  "lr": hyperparameters["lr"],
                  "weight_decay": weight_decay,
-                 "batch_size": batch_size
+                 "batch_size": batch_size,
+                 "best_baseline": best_baseline
                  }
 
     # Save the model and the results
