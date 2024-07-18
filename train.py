@@ -1,12 +1,12 @@
 import torch
 import os
 import json
-import random
 import matplotlib.pyplot as plt
 import datetime
 
 from torch import nn
-from torch.utils.data import random_split, DataLoader, Subset
+from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import StepLR
 from collections import defaultdict
 from isvqa_data_setup import ISVQA
 from nuscenesqa_data_setup import NuScenesQA
@@ -71,6 +71,7 @@ def train(hyperparameters: defaultdict,
           fine_tune_all: bool = False,
           image_lvl_pos_emb: bool = True,
           best_baseline: str = None,
+          scheduler_type: str = None,
           device: str = device):
     
     seed = hyperparameters["seed"] if hyperparameters["seed"] is not None else 42
@@ -186,9 +187,23 @@ def train(hyperparameters: defaultdict,
     elif optimizer_name == "adamw":
         optimizer = torch.optim.AdamW(model.parameters(), lr=hyperparameters["lr"], weight_decay=weight_decay)
 
+    if scheduler_type == "steplr":
+        step_size = hyperparameters["scheduler_step_size"]
+        gamma = hyperparameters["scheduler_gamma"]
+        if step_size is None:
+            raise ValueError("hyperparameters['scheduler_step_size'] should be defined.")
+        if gamma is None:
+            raise ValueError("hyperparameters['scheduler_gamma'] should be defined.")
+        scheduler = StepLR(optimizer=optimizer,
+                           step_size=step_size,
+                           gamma=gamma,
+                           verbose=True)
+    elif scheduler_type is not None:
+        raise ValueError("scheduler_type should be either 'steplr' or 'None'")
+
     epochs = hyperparameters["epochs"]
 
-    results = trainjob(model, epochs, train_loader, val_loader, optimizer, num_answers)
+    results = trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, num_answers)
 
     # Define a setup dictionary that will be saved together with the results, in order to be able to remeber what setup gave the corresponding results
     setup = {"model_variation": model_variation,
@@ -204,7 +219,8 @@ def train(hyperparameters: defaultdict,
                  "lr": hyperparameters["lr"],
                  "weight_decay": weight_decay,
                  "batch_size": batch_size,
-                 "best_baseline": best_baseline
+                 "best_baseline": best_baseline,
+                 "scheduler": scheduler
                  }
 
     # Save the model and the results

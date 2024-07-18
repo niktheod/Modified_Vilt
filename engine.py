@@ -74,7 +74,7 @@ def val_step(model, loader, acc_fn, answ_len):
     return avg_loss, avg_acc
 
 
-def trainjob(model, epochs, train_loader, val_loader, optimizer, answ_len, acc_fn=accuracy):
+def trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, answ_len, acc_fn=accuracy):
     """
     A function to train the model for a specific number of epochs.
     """
@@ -95,5 +95,8 @@ def trainjob(model, epochs, train_loader, val_loader, optimizer, answ_len, acc_f
         print(f"\tValidation Loss: {val_loss} | Validation Accuracy: {val_acc*100}%")
         val_losses.append(val_loss)
         val_accs.append(val_acc)
+
+        if scheduler is not None:
+            scheduler.step(verbose=True)
 
     return train_losses, train_accs, val_losses, val_accs

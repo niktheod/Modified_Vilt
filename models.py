@@ -165,7 +165,7 @@ class MultiviewViltForQuestionAnswering(nn.Module):
     """
     A class based on ViltForQuestionAnswering, but it works with a set of images.
     """
-    def __init__(self, set_size: int, img_seq_len: int, question_seq_len, emb_dim: int, pretrained_body: bool, vqa: bool, img_lvl_pos_emb: bool, pretrained_model_path: str = None,
+    def __init__(self, set_size: int, img_seq_len: int, question_seq_len: int, emb_dim: int, pretrained_body: bool, vqa: bool, img_lvl_pos_emb: bool, pretrained_model_path: str = None,
                  device: str = "cuda") -> None:
         super().__init__()
         self.preprocess = MultiviewViltModel(set_size, img_seq_len, emb_dim, pretrained_body, vqa, img_lvl_pos_emb)
@@ -176,7 +176,7 @@ class MultiviewViltForQuestionAnswering(nn.Module):
             model_dict = self.preprocess.state_dict()
             pretrained_dict = {k[11:]: v for k, v in pretrained_dict.items() if k[11:] in model_dict}
             self.preprocess.load_state_dict(pretrained_dict)
-            
+
         self.img_attn = nn.MultiheadAttention(emb_dim, 12, batch_first=True)
         self.final_model = ViltForQuestionAnswering.from_pretrained("dandelin/vilt-b32-finetuned-vqa")
         self.set_size = set_size
