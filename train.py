@@ -196,10 +196,11 @@ def train(hyperparameters: defaultdict,
             raise ValueError("hyperparameters['scheduler_gamma'] should be defined.")
         scheduler = StepLR(optimizer=optimizer,
                            step_size=step_size,
-                           gamma=gamma,
-                           verbose=True)
+                           gamma=gamma)
     elif scheduler_type is not None:
         raise ValueError("scheduler_type should be either 'steplr' or 'None'")
+    else:
+        scheduler = None
 
     epochs = hyperparameters["epochs"]
 
@@ -220,7 +221,9 @@ def train(hyperparameters: defaultdict,
                  "weight_decay": weight_decay,
                  "batch_size": batch_size,
                  "best_baseline": best_baseline,
-                 "scheduler": scheduler
+                 "scheduler": scheduler_type,
+                 "scheduler_step_size": hyperparameters["scheduler_step_size"],
+                 "scheduler_gamme": hyperparameters["scheduler_gamma"]
                  }
 
     # Save the model and the results

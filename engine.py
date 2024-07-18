@@ -86,6 +86,8 @@ def trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, answ
 
     for epoch in range(epochs):
         print(f"Epoch: {epoch+1}")
+        if scheduler is not None:
+            print(f"\tLearning rate: {scheduler.get_last_lr()[0]}")
         train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, acc_fn, answ_len)
         print(f"\tTrain Loss: {train_loss} | Train Accuracy: {train_acc*100}%")
         train_losses.append(train_loss)
