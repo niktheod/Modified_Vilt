@@ -97,6 +97,6 @@ def trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, answ
         val_accs.append(val_acc)
 
         if scheduler is not None:
-            scheduler.step(verbose=True)
+            scheduler.step()
 
     return train_losses, train_accs, val_losses, val_accs
