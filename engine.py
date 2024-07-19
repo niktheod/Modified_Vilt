@@ -20,31 +20,34 @@ def max_to_one_hot(tensor: torch.Tensor) -> torch.Tensor:
     return one_hot_tensor
 
 
-def train_one_epoch(model, loader, optimizer, acc_fn, answ_len):
+def train_one_epoch(model, loader, optimizer, grad_accum_size, acc_fn, answ_len):
     """
     A function that trains the model by going through all the mini-batches in the training dataloader once.
     """
     print("\tTraining...")
     model.train()
-    losses = []  # to save the loss of each mini-batch in order to take their average at the end
-    accuracies = []  # to save the accuracy of each mini-batch in order to take their average at the end
+    accum_loss = 0  # accumulation of the loss of each batch
+    accum_acc = 0  # accumulation of the accuracy of each batch
 
     for i, (X, y) in enumerate(loader):
         outputs = model(**X, labels=y)
         loss = outputs.loss
+        loss /= grad_accum_size
+        loss.backward()
         pred = max_to_one_hot(outputs.logits)
         acc = acc_fn(pred, y, answ_len)
 
-        losses.append(loss.item())
-        accuracies.append(acc)
+        accum_loss += loss.item()
+        accum_acc += acc
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if (i + 1) % grad_accum_size == 0:
+            optimizer.step()
+            optimizer.zero_grad()
+
         print(f"\t\tBatch {i+1}/{len(loader)}: Loss {loss} | Accuracy: {acc*100}%")
 
-    avg_loss = sum(losses) / len(loader)
-    avg_acc = sum(accuracies) / len(loader)
+    avg_loss = accum_loss / len(loader)
+    avg_acc = accum_acc / len(loader)
 
     return avg_loss, avg_acc
 
@@ -74,7 +77,7 @@ def val_step(model, loader, acc_fn, answ_len):
     return avg_loss, avg_acc
 
 
-def trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, answ_len, acc_fn=accuracy):
+def trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, grad_accum_size, answ_len, acc_fn=accuracy):
     """
     A function to train the model for a specific number of epochs.
     """
@@ -88,7 +91,7 @@ def trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, answ
         print(f"Epoch: {epoch+1}")
         if scheduler is not None:
             print(f"\tLearning rate: {scheduler.get_last_lr()[0]}")
-        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, acc_fn, answ_len)
+        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, grad_accum_size, acc_fn, answ_len)
         print(f"\tTrain Loss: {train_loss} | Train Accuracy: {train_acc*100}%")
         train_losses.append(train_loss)
         train_accs.append(train_acc)

@@ -204,7 +204,9 @@ def train(hyperparameters: defaultdict,
 
     epochs = hyperparameters["epochs"]
 
-    results = trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, num_answers)
+    grad_accum_size = hyperparameters["grad_accum_size"] if hyperparameters["grad_accum_size"] is not None else 1
+
+    results = trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, grad_accum_size, num_answers)
 
     # Define a setup dictionary that will be saved together with the results, in order to be able to remeber what setup gave the corresponding results
     setup = {"model_variation": model_variation,
