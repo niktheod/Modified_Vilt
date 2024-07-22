@@ -214,6 +214,7 @@ class MultiviewViltForQuestionAnswering(nn.Module):
         # Get the [CLS] tokens of the question and of each image in the image set
         idx = 0
         questions = first_output[:, idx].unsqueeze(1)
+
         idx += self.question_seq_len
 
         images = []
@@ -239,7 +240,7 @@ class MultiviewViltForQuestionAnswering(nn.Module):
         for i in range(self.set_size):
             image_set += attn_scores[:, :, i].unsqueeze(2) * first_output[:, idx:(idx+self.img_seq_len)]
             idx += self.img_seq_len
-
+        
         # Pass the question represantetion and the image set representation in a classic ViltForQuestionAnswering
         return self.final_model(inputs_embeds=first_output[:, :self.question_seq_len], image_embeds=image_set, labels=labels)
     
