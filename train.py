@@ -8,10 +8,10 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
 from collections import defaultdict
-from isvqa_data_setup import ISVQA
+from isvqa_data_setup import ISVQAv2
 from nuscenesqa_data_setup import NuScenesQA
 from engine import trainjob
-from models import MultiviewViltForQuestionAnswering, MultiviewViltForQuestionAnsweringBaseline
+from models import ImageSetQuestionAttention, MultiviewViltForQuestionAnsweringBaseline
 from nuscenes.nuscenes import NuScenes
 from typing import List, Tuple
 from prettytable import PrettyTable
@@ -89,12 +89,12 @@ def train(hyperparameters: defaultdict,
     
     # Load the dataset (either ISVQA or NuScenesQA)
     if dataset == "isvqa":
-        train_set = ISVQA(qa_path=train_path,
+        train_set = ISVQAv2(qa_path=train_path,
                           nuscenes_path=nuscenes_path,
                           answers_path=answers_path,
                           device=device)
         
-        val_set = ISVQA(qa_path=val_path,
+        val_set = ISVQAv2(qa_path=val_path,
                         nuscenes_path=nuscenes_path,
                         answers_path=answers_path,
                         device=device)
@@ -157,23 +157,22 @@ def train(hyperparameters: defaultdict,
             nn.GELU(),
             nn.Linear(1536, num_answers)
         ).to(device)
-    elif model_variation == "double_vilt":
-        model = MultiviewViltForQuestionAnswering(set_size, img_seq_len, question_seq_len, emb_dim, pretrained_model, pretrained_model, image_lvl_pos_emb,
-                                                  pretrained_model_path=best_baseline).to(device)
+    elif model_variation == "vit_vilt":
+        model = ImageSetQuestionAttention().to(device)
 
         if not fine_tune_all and pretrained_model:
             for name, parameter in model.named_parameters():
                 if name[:22] != "final_model.classifier" and name[:8] != "img_attn" and name[:10] != "preprocess":
                     parameter.requires_grad = False
 
-        model.final_model.classifier = nn.Sequential(
+        model.vilt.classifier = nn.Sequential(
             nn.Linear(emb_dim, 1536),
             nn.LayerNorm(1536),
             nn.GELU(),
             nn.Linear(1536, num_answers)
         ).to(device)
     else:
-        raise ValueError("model_variation should be either 'baseline' or 'double_vilt'")
+        raise ValueError("model_variation should be either 'baseline' or 'vit_vilt'")
     
     print("Parameters to be trained: ")
     count_parameters(model)
