@@ -141,7 +141,7 @@ def train(hyperparameters: defaultdict,
 
     # Define the model
     if model_variation == "baseline":
-        model = MultiviewViltForQuestionAnsweringBaseline(set_size, img_seq_len, emb_dim, pretrained_model, pretrained_model, image_lvl_pos_emb).to(device)
+        model = MultiviewViltForQuestionAnsweringBaseline(set_size, img_seq_len, emb_dim, pretrained_model, pretrained_model, image_lvl_pos_emb)
 
         # If we use pretrained weights and we don't want to fine tune the whole model (we only want to learn the VQA head and the set_positional_embedding because
         # they were initialized randomly), then we set requires_grad = False for all the other parameters.
@@ -156,7 +156,8 @@ def train(hyperparameters: defaultdict,
             nn.LayerNorm(1536),
             nn.GELU(),
             nn.Linear(1536, num_answers)
-        ).to(device)
+        )
+        model = model.to(device)
     elif model_variation == "double_vilt":
         model = MultiviewViltForQuestionAnswering(set_size, img_seq_len, question_seq_len, emb_dim, pretrained_model, pretrained_model, image_lvl_pos_emb,
                                                   pretrained_model_path=best_baseline).to(device)
