@@ -42,6 +42,16 @@ def save_plots(results: Tuple[List[float], List[float], List[float], List[float]
 
     plt.clf()
 
+    plt.plot(range(1, len(results[0])+1), results[0], label="Training")
+    plt.plot(range(1, len(results[2])+1), results[2], label="Validation")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss (Log Scale)")
+    plt.yscale('log')
+    plt.legend()
+    plt.savefig(f"{path}/loss_log.png", facecolor="white")
+
+    plt.clf()
+
 
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
