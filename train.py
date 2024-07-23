@@ -158,11 +158,11 @@ def train(hyperparameters: defaultdict,
             nn.Linear(1536, num_answers)
         ).to(device)
     elif model_variation == "vit_vilt":
-        model = ImageSetQuestionAttention().to(device)
+        model = ImageSetQuestionAttention(**hyperparameters["vit_vilt"]).to(device)
 
-        if not fine_tune_all and pretrained_model:
+        if not hyperparameters["vit_vilt"]["train_vilt"]:
             for name, parameter in model.named_parameters():
-                if name[:22] != "final_model.classifier" and name[:8] != "img_attn" and name[:10] != "preprocess":
+                if name[:4] != "attn":
                     parameter.requires_grad = False
 
         model.vilt.classifier = nn.Sequential(
@@ -171,6 +171,11 @@ def train(hyperparameters: defaultdict,
             nn.GELU(),
             nn.Linear(1536, num_answers)
         ).to(device)
+
+        pretrained_model = "N/A"
+        image_lvl_pos_emb = "N/A"
+        fine_tune_all = "N/A"
+        best_baseline = "N/A"
     else:
         raise ValueError("model_variation should be either 'baseline' or 'vit_vilt'")
     
@@ -225,7 +230,8 @@ def train(hyperparameters: defaultdict,
                  "best_baseline": best_baseline,
                  "scheduler": scheduler_type,
                  "scheduler_step_size": hyperparameters["scheduler_step_size"],
-                 "scheduler_gamme": hyperparameters["scheduler_gamma"]
+                 "scheduler_gamme": hyperparameters["scheduler_gamma"],
+                 "vit_vilt": hyperparameters["vit_vilt"]
                  }
 
     # Save the model and the results
