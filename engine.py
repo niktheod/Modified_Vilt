@@ -30,7 +30,8 @@ def train_one_epoch(model, loader, optimizer, grad_accum_size, acc_fn, answ_len)
     accum_acc = 0  # accumulation of the accuracy of each batch
 
     for i, (X, y) in enumerate(loader):
-        outputs = model(**X, labels=y)
+        # outputs = model(**X, labels=y)
+        outputs = model(inputs_embeds=torch.randn(32, 40, 768).to("cuda"), image_embeds=torch.randn(32, 1260, 768).to("cuda"), labels=y)
         loss = outputs.loss
         loss /= grad_accum_size
         loss.backward()

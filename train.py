@@ -10,8 +10,10 @@ from torch.optim.lr_scheduler import StepLR
 from collections import defaultdict
 from isvqa_data_setup import ISVQA
 from nuscenesqa_data_setup import NuScenesQA
+from modified_transformers import ViltForQuestionAnswering as MultivieViltForQuestionAnsweringBaseline
+from transformers import ViltForQuestionAnswering, ViltConfig
+from models import DoubleVilt
 from engine import trainjob
-from models import MultiviewViltForQuestionAnswering, MultiviewViltForQuestionAnsweringBaseline
 from nuscenes.nuscenes import NuScenes
 from typing import List, Tuple
 from prettytable import PrettyTable
@@ -67,7 +69,7 @@ def train(hyperparameters: defaultdict,
           path_to_save_results: str,
           path_to_save_model: str,
           title: str = None,
-          pretrained_model: bool = True,
+          pretrained_baseline: bool = True,
           fine_tune_all: bool = False,
           image_lvl_pos_emb: bool = True,
           best_baseline: str = None,
@@ -136,28 +138,49 @@ def train(hyperparameters: defaultdict,
     question_seq_len = hyperparameters["question_seq_len"] if hyperparameters["question_seq_len"] is not None else 40
     emb_dim = hyperparameters["emb_dim"] if hyperparameters["emb_dim"] is not None else 768
 
-    if emb_dim != 768 and pretrained_model == True:
+    if emb_dim != 768 and pretrained_baseline == True:
         raise ValueError("For pretrained ViLT the only valid value of emd_dim is 768")
 
     # Define the model
     if model_variation == "baseline":
-        model = MultiviewViltForQuestionAnsweringBaseline(set_size, img_seq_len, emb_dim, pretrained_model, pretrained_model, image_lvl_pos_emb, num_answers).to(device)
+        # model = MultivieViltForQuestionAnsweringBaseline.from_pretrained("dandelin/vilt-b32-finetuned-vqa").to(device)
+        model = ViltForQuestionAnswering(ViltConfig()).to(device)
 
         # If we use pretrained weights and we don't want to fine tune the whole model (we only want to learn the VQA head and the set_positional_embedding because
         # they were initialized randomly), then we set requires_grad = False for all the other parameters.
-        if not fine_tune_all and pretrained_model:
-            for name, parameter in model.named_parameters():
-                if name != "model.vilt.model.embeddings.img_position_embedding" and name[:10] != "classifier":
-                    parameter.requires_grad = False
+        if not fine_tune_all and pretrained_baseline:
+            for param in model.parameters():
+                param.requires_grad = False
+
+        model.classifier = nn.Sequential(
+            nn.Linear(emb_dim, 1536),
+            nn.LayerNorm(1536),
+            nn.GELU(),
+            nn.Linear(1536, num_answers)
+        ).to(device)
 
     elif model_variation == "double_vilt":
-        model = MultiviewViltForQuestionAnswering(set_size, img_seq_len, question_seq_len, emb_dim, pretrained_model, pretrained_model, image_lvl_pos_emb,
+        pretrained_final_model = hyperparameters["double_vilt"]["pretrained_final_model"]
+
+        model = DoubleVilt(set_size, img_seq_len, question_seq_len, emb_dim, pretrained_baseline, pretrained_final_model,
                                                   pretrained_model_path=best_baseline).to(device)
 
-        if not fine_tune_all and pretrained_model:
+        train_baseline, train_final_model = hyperparameters["double_vilt"]["train_baseline"], hyperparameters["double_vilt"]["train_final_model"]
+
+        if train_baseline and train_final_model:
+            pass
+        else:
             for name, parameter in model.named_parameters():
-                if name[:22] != "final_model.classifier" and name[:8] != "img_attn" and name[:10] != "preprocess":
-                    parameter.requires_grad = False
+                if not train_baseline and not train_final_model:
+                    if name[:8] != "img_attn":
+                        parameter.requires_grad = False
+                elif not train_baseline:
+                    if name[:11] != "final_model" and name[:8] != "img_attn":
+                        parameter.requires_grad = False
+                elif not train_final_model:
+                    if name[:8] != "baseline" and name[:8] != "img_attn":
+                        parameter.requires_grad = False
+                
 
         model.final_model.classifier = nn.Sequential(
             nn.Linear(emb_dim, 1536),
@@ -202,25 +225,43 @@ def train(hyperparameters: defaultdict,
     results = trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, grad_accum_size, num_answers)
 
     # Define a setup dictionary that will be saved together with the results, in order to be able to remeber what setup gave the corresponding results
-    setup = {"model_variation": model_variation,
-                "dataset": dataset,
-                 "pretrained": pretrained_model,
-                 "img_lvl_emb": image_lvl_pos_emb,
-                 "fine_tune_all": fine_tune_all,
-                 "seed": seed,
-                 "percentage": percentage,
-                 "emb_dim": emb_dim,
-                 "epochs": epochs,
-                 "optimizer": optimizer_name,
-                 "lr": hyperparameters["lr"],
-                 "weight_decay": weight_decay,
-                 "batch_size": batch_size,
-                 "grad_accum_size": grad_accum_size,
-                 "best_baseline": best_baseline,
-                 "scheduler": scheduler_type,
-                 "scheduler_step_size": hyperparameters["scheduler_step_size"],
-                 "scheduler_gamme": hyperparameters["scheduler_gamma"]
-                 }
+    if model_variation == "baseline":
+        setup = {"model_variation": model_variation,
+                    "dataset": dataset,
+                    "pretrained_baseline": pretrained_baseline,
+                    "fine_tune_all": fine_tune_all,
+                    "seed": seed,
+                    "percentage": percentage,
+                    "emb_dim": emb_dim,
+                    "epochs": epochs,
+                    "optimizer": optimizer_name,
+                    "lr": hyperparameters["lr"],
+                    "weight_decay": weight_decay,
+                    "batch_size": batch_size,
+                    "grad_accum_size": grad_accum_size,
+                    "scheduler": scheduler_type,
+                    "scheduler_step_size": hyperparameters["scheduler_step_size"],
+                    "scheduler_gamma": hyperparameters["scheduler_gamma"]
+                    }
+    elif model_variation == "double_vilt":
+        setup = {"model_variation": model_variation,
+                    "dataset": dataset,
+                    "pretrained_baseline": pretrained_baseline,
+                    "seed": seed,
+                    "percentage": percentage,
+                    "emb_dim": emb_dim,
+                    "epochs": epochs,
+                    "optimizer": optimizer_name,
+                    "lr": hyperparameters["lr"],
+                    "weight_decay": weight_decay,
+                    "batch_size": batch_size,
+                    "grad_accum_size": grad_accum_size,
+                    "best_baseline": best_baseline,
+                    "scheduler": scheduler_type,
+                    "scheduler_step_size": hyperparameters["scheduler_step_size"],
+                    "scheduler_gamme": hyperparameters["scheduler_gamma"],
+                    "double_vilt": hyperparameters["double_vilt"]
+                    }
 
     # Save the model and the results
     if title is None or os.path.exists(f"{path_to_save_results}/{title}"):
