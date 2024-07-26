@@ -8,11 +8,11 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
 from collections import defaultdict
-from isvqa_data_setup import ISVQA
+from isvqa_data_setup import ISVQA, ISVQAv2
 from nuscenesqa_data_setup import NuScenesQA
 from modified_transformers import ViltForQuestionAnswering as Baseline, ViltConfig
 from transformers import ViltModel
-from models import DoubleVilt
+from models import DoubleVilt, ImageSetQuestionAttention
 from engine import trainjob
 from nuscenes.nuscenes import NuScenes
 from typing import List, Tuple
@@ -44,6 +44,16 @@ def save_plots(results: Tuple[List[float], List[float], List[float], List[float]
 
     plt.clf()
 
+    plt.plot(range(1, len(results[0])+1), results[0], label="Training")
+    plt.plot(range(1, len(results[2])+1), results[2], label="Validation")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss (Log Scale)")
+    plt.yscale('log')
+    plt.legend()
+    plt.savefig(f"{path}/loss_log.png", facecolor="white")
+
+    plt.clf()
+
 
 def count_parameters(model):
     table = PrettyTable(["Modules", "Parameters"])
@@ -71,7 +81,6 @@ def train(hyperparameters: defaultdict,
           title: str = None,
           pretrained_baseline: bool = True,
           fine_tune_all: bool = False,
-          image_lvl_pos_emb: bool = True,
           best_baseline: str = None,
           scheduler_type: str = None,
           device: str = device):
@@ -91,12 +100,23 @@ def train(hyperparameters: defaultdict,
     
     # Load the dataset (either ISVQA or NuScenesQA)
     if dataset == "isvqa":
-        train_set = ISVQA(qa_path=train_path,
+        if model_variation != "vit_vilt":
+            train_set = ISVQA(qa_path=train_path,
+                            nuscenes_path=nuscenes_path,
+                            answers_path=answers_path,
+                            device=device)
+            
+            val_set = ISVQA(qa_path=val_path,
+                            nuscenes_path=nuscenes_path,
+                            answers_path=answers_path,
+                            device=device)
+        else:
+            train_set = ISVQAv2(qa_path=train_path,
                           nuscenes_path=nuscenes_path,
                           answers_path=answers_path,
                           device=device)
         
-        val_set = ISVQA(qa_path=val_path,
+            val_set = ISVQAv2(qa_path=val_path,
                         nuscenes_path=nuscenes_path,
                         answers_path=answers_path,
                         device=device)
@@ -160,7 +180,6 @@ def train(hyperparameters: defaultdict,
             nn.GELU(),
             nn.Linear(1536, num_answers)
         ).to(device)
-
     elif model_variation == "double_vilt":
         pretrained_final_model = hyperparameters["double_vilt"]["pretrained_final_model"]
 
@@ -190,8 +209,22 @@ def train(hyperparameters: defaultdict,
             nn.GELU(),
             nn.Linear(1536, num_answers)
         ).to(device)
+    elif model_variation == "vit_vilt":
+        model = ImageSetQuestionAttention(**hyperparameters["vit_vilt"]).to(device)
+        
+        if not hyperparameters["vit_vilt"]["train_vilt"]:
+            for name, parameter in model.named_parameters():
+                if name[:4] != "attn":
+                    parameter.requires_grad = False
+
+        model.vilt.classifier = nn.Sequential(
+            nn.Linear(emb_dim, 1536),
+            nn.LayerNorm(1536),
+            nn.GELU(),
+            nn.Linear(1536, num_answers)
+        ).to(device)
     else:
-        raise ValueError("model_variation should be either 'baseline' or 'double_vilt'")
+        raise ValueError("model_variation should be either 'baseline' or 'double_vilt' or 'vit_vilt'")
     
     print("Parameters to be trained: ")
     count_parameters(model)
@@ -261,8 +294,25 @@ def train(hyperparameters: defaultdict,
                     "best_baseline": best_baseline,
                     "scheduler": scheduler_type,
                     "scheduler_step_size": hyperparameters["scheduler_step_size"],
-                    "scheduler_gamme": hyperparameters["scheduler_gamma"],
+                    "scheduler_gamma": hyperparameters["scheduler_gamma"],
                     "double_vilt": hyperparameters["double_vilt"]
+                    }
+    else:
+        setup = {"model_variation": model_variation,
+                    "dataset": dataset,
+                    "seed": seed,
+                    "percentage": percentage,
+                    "emb_dim": emb_dim,
+                    "epochs": epochs,
+                    "optimizer": optimizer_name,
+                    "lr": hyperparameters["lr"],
+                    "weight_decay": weight_decay,
+                    "batch_size": batch_size,
+                    "grad_accum_size": grad_accum_size,
+                    "scheduler": scheduler_type,
+                    "scheduler_step_size": hyperparameters["scheduler_step_size"],
+                    "scheduler_gamma": hyperparameters["scheduler_gamma"],
+                    "vit_vilt": hyperparameters["vit_vilt"]
                     }
 
     # Save the model and the results

@@ -2,8 +2,8 @@ import torch
 
 from torch import nn
 from typing import Optional
-from transformers import ViltForQuestionAnswering, ViltConfig
-from modified_transformers import ViltModel, ViltConfig as ViltConfig2
+from transformers import ViltForQuestionAnswering, ViltConfig, ViTModel, ViTConfig, BertModel, BertConfig
+from modified_transformers import ViltModel as Baseline, ViltConfig as ViltConfig2
     
 
 class DoubleVilt(nn.Module):
@@ -14,9 +14,9 @@ class DoubleVilt(nn.Module):
                  device: str = "cuda") -> None:
         super().__init__()
         if pretrained_baseline:
-            self.baseline = ViltModel.from_pretrained("dandelin/vilt-b32-finetuned-vqa")
+            self.baseline = Baseline.from_pretrained("dandelin/vilt-b32-finetuned-vqa")
         else:
-            self.baseline = ViltModel(ViltConfig2())
+            self.baseline = Baseline(ViltConfig2())
         
         if pretrained_model_path is not None:
             pretrained_dict = torch.load(pretrained_model_path)
@@ -36,12 +36,6 @@ class DoubleVilt(nn.Module):
         self.question_seq_len = question_seq_len
         self.emb_dim = emb_dim
         self.device = device
-
-        self.cls = nn.Sequential(nn.Linear(768, 1536),
-                                 nn.LayerNorm(1536),
-                                 nn.GELU(),
-                                 nn.Linear(1536, 429))
-
 
     def forward(
         self,
@@ -94,4 +88,75 @@ class DoubleVilt(nn.Module):
         # return self.final_model(inputs_embeds=torch.randn(batch_size, 40, 768).to("cuda"), image_embeds=torch.randn(batch_size, 210, 768).to("cuda"), labels=labels)
 
 
+class ImageSetQuestionAttention(nn.Module):
+    def __init__(self, pretrained_vit_version: str = "google/vit-base-patch16-224-in21k", pretrained_bert_version: str = "bert-base-uncased",
+                 pretrained_vilt_version: str = "dandelin/vilt-b32-finetuned-vqa", train_vit: bool = False, train_bert: bool = False, train_vilt: bool = True,
+                 device="cuda") -> None:
+        super().__init__()
+        
+        if pretrained_vit_version is None:
+            self.vit = ViTModel(ViTConfig())
+        else:
+            self.vit = ViTModel.from_pretrained(pretrained_vit_version)
+        
+        if pretrained_bert_version is None:
+            self.bert = BertModel(BertConfig())
+        else:
+            self.bert = BertModel.from_pretrained(pretrained_bert_version)
+        
+        self.attn = nn.MultiheadAttention(768, 12, batch_first=True)
+
+        if pretrained_vilt_version is None:
+            self.vilt = ViltForQuestionAnswering(ViltConfig())
+        else:
+            self.vilt = ViltForQuestionAnswering.from_pretrained(pretrained_vilt_version)
+        
+        if not train_vit:
+            for param in self.vit.parameters():
+                param.requires_grad = False
+
+        if not train_bert:
+            for param in self.bert.parameters():
+                param.requires_grad = False
+
+        if not train_vilt:
+            for param in self.vilt.parameters():
+                param.requires_grad = False
+
+        self.device = device
+
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        token_type_ids: Optional[torch.LongTensor] = None,
+        pixel_values: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None):
+
+        question = self.bert(input_ids, attention_mask, token_type_ids)
+        question_vector = question.pooler_output.unsqueeze(1)
+        
+        batch_size, set_size = pixel_values.shape[0], pixel_values.shape[1]
+
+        images = []
+        image_vectors = []
+        for i in range(set_size):
+            image = self.vit(pixel_values[:, i])
+            image_vector = image.pooler_output
+
+            images.append(image.last_hidden_state)
+            image_vectors.append(image_vector)
+
+        images = torch.stack(images, dim=1)
+        image_vectors = torch.stack(image_vectors, dim=1)
+
+        _, attn_scores = self.attn(question_vector, image_vectors, image_vectors)
+
+        image_set = torch.zeros(batch_size, 197, 768).to(self.device)
+
+        # Create an embedded representation for the image set that is a weighted average of the images based on their attention score      
+        for i in range(set_size):
+            image_set += attn_scores[:, :, i].unsqueeze(2) * images[:, i]
+                
+        return self.vilt(inputs_embeds=question.last_hidden_state, image_embeds=image_set, labels=labels)
     

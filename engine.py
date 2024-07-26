@@ -28,7 +28,7 @@ def train_one_epoch(model, loader, optimizer, grad_accum_size, acc_fn, answ_len)
     model.train()
     accum_loss = 0  # accumulation of the loss of each batch
     accum_acc = 0  # accumulation of the accuracy of each batch
-
+    
     for i, (X, y) in enumerate(loader):
         outputs = model(**X, labels=y)
         loss = outputs.loss
