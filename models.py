@@ -76,16 +76,18 @@ class DoubleVilt(nn.Module):
 
         # Initialize a tensor that will represent the image set
         image_set = torch.zeros(batch_size, self.img_seq_len, self.emb_dim).to(self.device)
+        # avg_pixel_values = torch.zeros(batch_size, pixel_values.shape[2], pixel_values.shape[3], pixel_values.shape[4]).to(self.device)
 
         # Create an embedded representation for the image set that is a weighted average of the images based on their attention score
         idx = self.question_seq_len        
         for i in range(self.set_size):
+            # avg_pixel_values += attn_scores[:, :, i].unsqueeze(2).unsqueeze(3) * pixel_values[:, i]
             image_set += attn_scores[:, :, i].unsqueeze(2) * first_output[:, idx:(idx+self.img_seq_len)]
             idx += self.img_seq_len
 
         # Pass the question represantetion and the image set representation in a classic ViltForQuestionAnswering
-        return self.final_model(inputs_embeds=first_output[:, :self.question_seq_len], image_embeds=image_set, labels=labels)
-        # return self.final_model(inputs_embeds=torch.randn(batch_size, 40, 768).to("cuda"), image_embeds=torch.randn(batch_size, 210, 768).to("cuda"), labels=labels)
+        return self.final_model(input_ids, attention_mask, token_type_ids, image_embeds=image_set, labels=labels)
+        return self.final_model(input_ids, attention_mask, token_type_ids, avg_pixel_values, labels=labels)
 
 
 class ImageSetQuestionAttention(nn.Module):
