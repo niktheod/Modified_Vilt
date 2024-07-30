@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from typing import Optional
 from transformers import ViltForQuestionAnswering, ViltConfig, ViTModel, ViTConfig, BertModel, BertConfig
-from modified_transformers import ViltModel as Baseline, ViltConfig as ViltConfig2
+from modified_transformers import ViltModel as Baseline, ViltConfig as ViltConfig2, ViltForQuestionAnswering as MultiviewViltForQuestionAnswering
     
 
 class DoubleVilt(nn.Module):
@@ -91,7 +91,7 @@ class DoubleVilt(nn.Module):
 class ImageSetQuestionAttention(nn.Module):
     def __init__(self, pretrained_vit_version: str = "google/vit-base-patch16-224-in21k", pretrained_bert_version: str = "bert-base-uncased",
                  pretrained_vilt_version: str = "dandelin/vilt-b32-finetuned-vqa", train_vit: bool = False, train_bert: bool = False, train_vilt: bool = True,
-                 device="cuda") -> None:
+                 threshold: float = 0.1, device="cuda") -> None:
         super().__init__()
         
         if pretrained_vit_version is None:
@@ -107,9 +107,9 @@ class ImageSetQuestionAttention(nn.Module):
         self.attn = nn.MultiheadAttention(768, 12, batch_first=True)
 
         if pretrained_vilt_version is None:
-            self.vilt = ViltForQuestionAnswering(ViltConfig())
+            self.vilt = MultiviewViltForQuestionAnswering(ViltConfig2())
         else:
-            self.vilt = ViltForQuestionAnswering.from_pretrained(pretrained_vilt_version)
+            self.vilt = MultiviewViltForQuestionAnswering.from_pretrained(pretrained_vilt_version)
         
         if not train_vit:
             for param in self.vit.parameters():
@@ -123,6 +123,7 @@ class ImageSetQuestionAttention(nn.Module):
             for param in self.vilt.parameters():
                 param.requires_grad = False
 
+        self.threshold = threshold
         self.device = device
 
     def forward(
@@ -138,25 +139,42 @@ class ImageSetQuestionAttention(nn.Module):
         
         batch_size, set_size = pixel_values.shape[0], pixel_values.shape[1]
 
-        images = []
+        # images = []
         image_vectors = []
         for i in range(set_size):
-            image = self.vit(pixel_values[:, i])
-            image_vector = image.pooler_output
+            # image = self.vit(pixel_values[:, i])
+            image_vector = self.vit(pixel_values[:, i]).pooler_output
 
-            images.append(image.last_hidden_state)
+            # images.append(image.last_hidden_state)
             image_vectors.append(image_vector)
 
-        images = torch.stack(images, dim=1)
+        # images = torch.stack(images, dim=1)
         image_vectors = torch.stack(image_vectors, dim=1)
 
         _, attn_scores = self.attn(question_vector, image_vectors, image_vectors)
 
-        image_set = torch.zeros(batch_size, 197, 768).to(self.device)
+        important_images = (attn_scores > self.threshold).squeeze()
+        important_image_cnt = important_images.sum(dim=1)
+        print(f"Images taken into consideration: {important_image_cnt}")
 
-        # Create an embedded representation for the image set that is a weighted average of the images based on their attention score      
-        for i in range(set_size):
-            image_set += attn_scores[:, :, i].unsqueeze(2) * images[:, i]
+        important_pixel_values = []
+        pixel_mask = []
+
+        for batch in range(batch_size):
+            important_pixel_values_within_batch = []
+            pixel_mask_within_batch = []
+            for num_image in range(set_size):
+                if important_images[batch, num_image]:
+                    important_pixel_values_within_batch.append(pixel_values[batch, num_image])
+                    pixel_mask_within_batch.append(torch.ones_like(pixel_values[batch, num_image]).to(self.device))
+                else:
+                    important_pixel_values_within_batch.append(torch.zeros_like(pixel_values[batch, num_image]).to(self.device))
+                    pixel_mask_within_batch.append(torch.zeros_like(pixel_values[batch, num_image]).to(self.device))
+            important_pixel_values.append(important_pixel_values_within_batch)
+            pixel_mask.append(pixel_mask_within_batch)
+
+        important_pixel_values = torch.stack(pixel_values)
+        pixel_mask = torch.stack(pixel_mask)
                 
-        return self.vilt(inputs_embeds=question.last_hidden_state, image_embeds=image_set, labels=labels)
+        return self.vilt(input_ids, attention_mask, token_type_ids, important_pixel_values, pixel_mask)
     
