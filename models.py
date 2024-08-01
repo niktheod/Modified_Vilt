@@ -170,10 +170,10 @@ class ImageSetQuestionAttention(nn.Module):
                 else:
                     important_pixel_values_within_batch.append(torch.zeros_like(pixel_values[batch, num_image]).to(self.device))
                     pixel_mask_within_batch.append(torch.zeros_like(pixel_values[batch, num_image]).to(self.device))
-            important_pixel_values.append(important_pixel_values_within_batch)
-            pixel_mask.append(pixel_mask_within_batch)
+            important_pixel_values.append(torch.stack(important_pixel_values_within_batch))
+            pixel_mask.append(torch.stack(pixel_mask_within_batch))
 
-        important_pixel_values = torch.stack(pixel_values)
+        important_pixel_values = torch.stack(important_pixel_values)
         pixel_mask = torch.stack(pixel_mask)
                 
         return self.vilt(input_ids, attention_mask, token_type_ids, important_pixel_values, pixel_mask)
