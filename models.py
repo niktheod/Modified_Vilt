@@ -154,14 +154,14 @@ class ImageSetQuestionAttention(nn.Module):
 
         _, attn_scores = self.attn(question_vector, image_vectors, image_vectors)
 
-        image_set = torch.zeros(batch_size, 197, 768).to(self.device)
-        # avg_pixel_values = torch.zeros(batch_size, pixel_values.shape[2], pixel_values.shape[3], pixel_values.shape[4]).to(self.device)
+        # image_set = torch.zeros(batch_size, 197, 768).to(self.device)
+        avg_pixel_values = torch.zeros(batch_size, pixel_values.shape[2], pixel_values.shape[3], pixel_values.shape[4]).to(self.device)
 
         # Create an embedded representation for the image set that is a weighted average of the images based on their attention score      
         for i in range(set_size):
-            # avg_pixel_values += attn_scores[:, :, i].unsqueeze(2).unsqueeze(3) * pixel_values[:, i]
-            image_set += attn_scores[:, :, i].unsqueeze(2) * images[:, i]
+            avg_pixel_values += attn_scores[:, :, i].unsqueeze(2).unsqueeze(3) * pixel_values[:, i]
+            # image_set += attn_scores[:, :, i].unsqueeze(2) * images[:, i]
                 
-        return self.final_model(input_ids, attention_mask, token_type_ids, image_embeds=image_set, labels=labels)
-        return self.final_model(input_ids, attention_mask, token_type_ids, avg_pixel_values, labels=labels)
+        # return self.vilt(input_ids, attention_mask, token_type_ids, image_embeds=image_set, labels=labels)
+        return self.vilt(input_ids, attention_mask, token_type_ids, avg_pixel_values, labels=labels)
     
