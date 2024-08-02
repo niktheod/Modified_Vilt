@@ -134,7 +134,6 @@ class ImageSetQuestionAttention(nn.Module):
         pixel_values: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None):
 
-        print(self.vilt.vilt.embeddings.cls_token)
         question = self.bert(input_ids, attention_mask, token_type_ids)
         question_vector = question.pooler_output.unsqueeze(1)
         
@@ -153,29 +152,16 @@ class ImageSetQuestionAttention(nn.Module):
         image_vectors = torch.stack(image_vectors, dim=1)
 
         _, attn_scores = self.attn(question_vector, image_vectors, image_vectors)
+        weights = (attn_scores / attn_scores.max(dim=2)[0].unsqueeze(2)).squeeze()
+        print(weights)
+        weights = weights.unsqueeze(2).unsqueeze(3).unsqueeze(4)
 
-        important_images = (attn_scores > self.threshold).squeeze()
-        important_image_cnt = important_images.sum(dim=1)
-        print(f"\t\tImages taken into consideration: {important_image_cnt}")
+        # important_images = (attn_scores > self.threshold).squeeze()
+        # important_image_cnt = important_images.sum(dim=1)
+        # print(f"\t\t{attn_scores}")
 
-        important_pixel_values = []
-        pixel_mask = []
-
-        for batch in range(batch_size):
-            important_pixel_values_within_batch = []
-            pixel_mask_within_batch = []
-            for num_image in range(set_size):
-                if important_images[batch, num_image]:
-                    important_pixel_values_within_batch.append(pixel_values[batch, num_image])
-                    pixel_mask_within_batch.append(torch.ones_like(pixel_values[batch, num_image, 0]).to(self.device))
-                else:
-                    important_pixel_values_within_batch.append(torch.zeros_like(pixel_values[batch, num_image]).to(self.device))
-                    pixel_mask_within_batch.append(torch.zeros_like(pixel_values[batch, num_image, 0]).to(self.device))
-            important_pixel_values.append(torch.stack(important_pixel_values_within_batch))
-            pixel_mask.append(torch.stack(pixel_mask_within_batch))
-
-        important_pixel_values = torch.stack(important_pixel_values)
-        pixel_mask = torch.stack(pixel_mask)
+        weighted_pixel_values = weights * pixel_values
+        new_pixel_mask = torch.ones_like(weighted_pixel_values[:, :, 0])
                 
-        return self.vilt(input_ids, attention_mask, token_type_ids, important_pixel_values, pixel_mask, labels=labels)
+        return self.vilt(input_ids, attention_mask, token_type_ids, weighted_pixel_values, new_pixel_mask, labels=labels)
     
