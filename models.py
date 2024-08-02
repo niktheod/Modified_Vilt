@@ -134,6 +134,7 @@ class ImageSetQuestionAttention(nn.Module):
         pixel_values: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None):
 
+        print(self.vilt.vilt.embeddings.cls_token)
         question = self.bert(input_ids, attention_mask, token_type_ids)
         question_vector = question.pooler_output.unsqueeze(1)
         
@@ -155,7 +156,7 @@ class ImageSetQuestionAttention(nn.Module):
 
         important_images = (attn_scores > self.threshold).squeeze()
         important_image_cnt = important_images.sum(dim=1)
-        print(f"Images taken into consideration: {important_image_cnt}")
+        print(f"\t\tImages taken into consideration: {important_image_cnt}")
 
         important_pixel_values = []
         pixel_mask = []
@@ -166,15 +167,15 @@ class ImageSetQuestionAttention(nn.Module):
             for num_image in range(set_size):
                 if important_images[batch, num_image]:
                     important_pixel_values_within_batch.append(pixel_values[batch, num_image])
-                    pixel_mask_within_batch.append(torch.ones_like(pixel_values[batch, num_image]).to(self.device))
+                    pixel_mask_within_batch.append(torch.ones_like(pixel_values[batch, num_image, 0]).to(self.device))
                 else:
                     important_pixel_values_within_batch.append(torch.zeros_like(pixel_values[batch, num_image]).to(self.device))
-                    pixel_mask_within_batch.append(torch.zeros_like(pixel_values[batch, num_image]).to(self.device))
+                    pixel_mask_within_batch.append(torch.zeros_like(pixel_values[batch, num_image, 0]).to(self.device))
             important_pixel_values.append(torch.stack(important_pixel_values_within_batch))
             pixel_mask.append(torch.stack(pixel_mask_within_batch))
 
         important_pixel_values = torch.stack(important_pixel_values)
         pixel_mask = torch.stack(pixel_mask)
                 
-        return self.vilt(input_ids, attention_mask, token_type_ids, important_pixel_values, pixel_mask)
+        return self.vilt(input_ids, attention_mask, token_type_ids, important_pixel_values, pixel_mask, labels=labels)
     
