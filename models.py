@@ -153,15 +153,17 @@ class ImageSetQuestionAttention(nn.Module):
 
         _, attn_scores = self.attn(question_vector, image_vectors, image_vectors)
         weights = (attn_scores / attn_scores.max(dim=2)[0].unsqueeze(2)).squeeze()
-        print(weights)
-        weights = weights.unsqueeze(2).unsqueeze(3).unsqueeze(4)
+        noise_factor = 1 - weights
+        print(noise_factor)
+        noise = torch.randn_like(noise_factor) * noise_factor
+        noise = noise.unsqueeze(2).unsqueeze(3).unsqueeze(4)
 
         # important_images = (attn_scores > self.threshold).squeeze()
         # important_image_cnt = important_images.sum(dim=1)
         # print(f"\t\t{attn_scores}")
 
-        weighted_pixel_values = weights * pixel_values
-        new_pixel_mask = torch.ones_like(weighted_pixel_values[:, :, 0])
+        altered_pixel_values = pixel_values + noise
+        new_pixel_mask = torch.ones_like(altered_pixel_values[:, :, 0])
                 
-        return self.vilt(input_ids, attention_mask, token_type_ids, weighted_pixel_values, new_pixel_mask, labels=labels)
+        return self.vilt(input_ids, attention_mask, token_type_ids, altered_pixel_values, new_pixel_mask, labels=labels)
     
