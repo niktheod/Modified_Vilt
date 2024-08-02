@@ -155,9 +155,9 @@ class ImageSetQuestionAttention(nn.Module):
         weights = (attn_scores / attn_scores.max(dim=2)[0].unsqueeze(2)).squeeze()
         print(weights)
         noise_factor = 1 - weights
-        noise = torch.randn_like(noise_factor) * noise_factor * weights
         weights = weights.unsqueeze(2).unsqueeze(3).unsqueeze(4)
-        noise = noise.unsqueeze(2).unsqueeze(3).unsqueeze(4)
+        noise_factor = noise_factor.unsqueeze(2).unsqueeze(3).unsqueeze(4)
+        noise = torch.randn_like(pixel_values) * noise_factor * weights
 
         # important_images = (attn_scores > self.threshold).squeeze()
         # important_image_cnt = important_images.sum(dim=1)
