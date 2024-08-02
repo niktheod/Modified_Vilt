@@ -8,7 +8,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
 from collections import defaultdict
-from isvqa_data_setup import ISVQAv2
+from isvqa_data_setup import ISVQA
 from nuscenesqa_data_setup import NuScenesQA
 from engine import trainjob
 from models import ImageSetQuestionAttention, MultiviewViltForQuestionAnsweringBaseline
@@ -79,7 +79,7 @@ def train(hyperparameters: defaultdict,
           title: str = None,
           pretrained_model: bool = True,
           fine_tune_all: bool = False,
-          image_lvl_pos_emb: bool = True,
+          image_lvl_pos_emb: bool = False,
           best_baseline: str = None,
           scheduler_type: str = None,
           device: str = device):
@@ -99,12 +99,12 @@ def train(hyperparameters: defaultdict,
     
     # Load the dataset (either ISVQA or NuScenesQA)
     if dataset == "isvqa":
-        train_set = ISVQAv2(qa_path=train_path,
+        train_set = ISVQA(qa_path=train_path,
                           nuscenes_path=nuscenes_path,
                           answers_path=answers_path,
                           device=device)
         
-        val_set = ISVQAv2(qa_path=val_path,
+        val_set = ISVQA(qa_path=val_path,
                         nuscenes_path=nuscenes_path,
                         answers_path=answers_path,
                         device=device)
