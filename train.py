@@ -341,3 +341,4 @@ def train(hyperparameters: defaultdict,
                path=results_folder)
     
     print("Done!")
+    print(f"Results filename: {title}")
