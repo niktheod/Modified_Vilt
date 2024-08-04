@@ -72,11 +72,11 @@ class ViltSetEmbeddings(nn.Module):
 
         # Reshape the visual embeddings from shape (batch_size, num_images, seq_length, emb_dimension) to (batch_size, [num_imges * seq_length], emb_dimension)
         # in order for the attention layer to be able to process it, as it can not process 4D tensors.
-        visual_embeds_tensor = visual_embeds_tensor.reshape(visual_embeds_tensor.shape[0], self.set_size*self.seq_len, self.emb_dim)
+        visual_embeds_tensor = visual_embeds_tensor.flatten(1, 2)
 
         # Repeat the same process for the masks (apart from adding the image level positional embeddings)
         visual_masks_tensor = torch.stack(visual_masks)
-        visual_masks_tensor = visual_masks_tensor.reshape(visual_masks_tensor.shape[0], self.set_size*self.seq_len)
+        visual_masks_tensor = visual_masks_tensor.flatten(1, 2)
 
         # Concatenate the two modalities together
         embeddings = torch.cat([text_embeds, visual_embeds_tensor], dim=1)
