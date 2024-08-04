@@ -47,7 +47,7 @@ class ViltSetEmbeddings(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Get the text embeddings and add the modality embedding to them
         text_embeds = self.embeddings.text_embeddings(
-            input_ids=input_ids, token_type_ids=token_type_ids, inputs_embeds=None
+            input_ids=input_ids, token_type_ids=token_type_ids, inputs_embeds=inputs_embeds
         )
 
         text_embeds = text_embeds + self.embeddings.token_type_embeddings(
@@ -59,25 +59,29 @@ class ViltSetEmbeddings(nn.Module):
         visual_masks = []
         
         # Go through each image in the set, calculate the embeddings, add the modality embeddings, and save them in the list
-        for image, mask in zip(pixel_values, pixel_mask):
-            embedding, emb_mask, _ = self.embeddings.visual_embed(image, mask, max_image_length=self.embeddings.config.max_image_length)
-            embedding += self.embeddings.token_type_embeddings(torch.ones_like(emb_mask, dtype=torch.long, device=text_embeds.device))
+        if image_embeds is None:
+            for image, mask in zip(pixel_values, pixel_mask):
+                embedding, emb_mask, _ = self.embeddings.visual_embed(image, mask, max_image_length=self.embeddings.config.max_image_length)
+                embedding += self.embeddings.token_type_embeddings(torch.ones_like(emb_mask, dtype=torch.long, device=text_embeds.device))
 
-            visual_embeds.append(embedding)
-            visual_masks.append(emb_mask)
+                visual_embeds.append(embedding)
+                visual_masks.append(emb_mask)
 
-        # Stack all the visual embeddings together to create the embedding representation of the whole set
-        visual_embeds_tensor = torch.stack(visual_embeds)
-        if self.img_lvl_pos_embeddings:  # add the image level positional embeddings if needed
-            visual_embeds_tensor += self.img_position_embedding
+            # Stack all the visual embeddings together to create the embedding representation of the whole set
+            visual_embeds_tensor = torch.stack(visual_embeds)
+            if self.img_lvl_pos_embeddings:  # add the image level positional embeddings if needed
+                visual_embeds_tensor += self.img_position_embedding
 
-        # Reshape the visual embeddings from shape (batch_size, num_images, seq_length, emb_dimension) to (batch_size, [num_imges * seq_length], emb_dimension)
-        # in order for the attention layer to be able to process it, as it can not process 4D tensors.
-        visual_embeds_tensor = visual_embeds_tensor.flatten(1, 2)
+            # Reshape the visual embeddings from shape (batch_size, num_images, seq_length, emb_dimension) to (batch_size, [num_imges * seq_length], emb_dimension)
+            # in order for the attention layer to be able to process it, as it can not process 4D tensors.
+            visual_embeds_tensor = visual_embeds_tensor.flatten(1, 2)
 
-        # Repeat the same process for the masks (apart from adding the image level positional embeddings)
-        visual_masks_tensor = torch.stack(visual_masks)
-        visual_masks_tensor = visual_masks_tensor.flatten(1, 2)
+            # Repeat the same process for the masks (apart from adding the image level positional embeddings)
+            visual_masks_tensor = torch.stack(visual_masks)
+            visual_masks_tensor = visual_masks_tensor.flatten(1, 2)
+        else:
+            visual_embeds_tensor = image_embeds
+            visual_masks_tensor = torch.ones_like(image_embeds[..., 0])
 
         # Concatenate the two modalities together
         embeddings = torch.cat([text_embeds, visual_embeds_tensor], dim=1)
@@ -259,10 +263,7 @@ class ImageSetQuestionAttention(nn.Module):
         
         self.attn = nn.MultiheadAttention(768, 12, batch_first=True)
 
-        if pretrained_vilt_version is None:
-            self.vilt = ViltForQuestionAnswering(ViltConfig())
-        else:
-            self.vilt = ViltForQuestionAnswering.from_pretrained(pretrained_vilt_version)
+        self.vilt = MultiviewViltForQuestionAnsweringBaseline(6, 210, 768, pretrained_vilt_version, pretrained_vilt_version, False)
         
         if not train_vit:
             for param in self.vit.parameters():
@@ -304,12 +305,17 @@ class ImageSetQuestionAttention(nn.Module):
         image_vectors = torch.stack(image_vectors, dim=1)
 
         _, attn_scores = self.attn(question_vector, image_vectors, image_vectors)
+        weights = (attn_scores / attn_scores.max(dim=2)[0].unsqueeze(2)).squeeze()
+        noise_factor = 1 - weights
+        print(f"\t\t{noise_factor}")
+        noise = torch.randn_like(noise_factor) * noise_factor
+        noise = noise.unsqueeze(2).unsqueeze(3).unsqueeze(4)
 
-        image_set = torch.zeros(batch_size, 197, 768).to(self.device)
+        # important_images = (attn_scores > self.threshold).squeeze()
+        # important_image_cnt = important_images.sum(dim=1)
+        # print(f"\t\t{attn_scores}")
 
-        # Create an embedded representation for the image set that is a weighted average of the images based on their attention score      
-        for i in range(set_size):
-            image_set += attn_scores[:, :, i].unsqueeze(2) * images[:, i]
-                
-        return self.vilt(inputs_embeds=question.last_hidden_state, image_embeds=image_set, labels=labels)
-    
+        altered_pixel_values = pixel_values + noise
+        new_pixel_mask = torch.ones_like(altered_pixel_values[:, :, 0])
+
+        return self.vilt(input_ids, attention_mask, token_type_ids, altered_pixel_values, new_pixel_mask, labels=labels)

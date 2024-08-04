@@ -214,7 +214,7 @@ def train(hyperparameters: defaultdict,
                 if name[:4] != "attn":
                     parameter.requires_grad = False
 
-        model.vilt.classifier = nn.Sequential(
+        model.vilt.model.classifier = nn.Sequential(
             nn.Linear(emb_dim, 1536),
             nn.LayerNorm(1536),
             nn.GELU(),
