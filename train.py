@@ -10,9 +10,8 @@ from torch.optim.lr_scheduler import StepLR
 from collections import defaultdict
 from isvqa_data_setup import ISVQA, ISVQAv2
 from nuscenesqa_data_setup import NuScenesQA
-from modified_transformers import ViltForQuestionAnswering as Baseline, ViltConfig
 from transformers import ViltModel
-from models import DoubleVilt, ImageSetQuestionAttention
+from models import MultiviewViltForQuestionAnsweringBaseline, DoubleVilt, ImageSetQuestionAttention
 from engine import trainjob
 from nuscenes.nuscenes import NuScenes
 from typing import List, Tuple
@@ -81,6 +80,7 @@ def train(hyperparameters: defaultdict,
           title: str = None,
           pretrained_baseline: bool = True,
           fine_tune_all: bool = False,
+          img_lvl_pos_emb : bool = False,
           best_baseline: str = None,
           scheduler_type: str = None,
           device: str = device):
@@ -163,10 +163,7 @@ def train(hyperparameters: defaultdict,
 
     # Define the model
     if model_variation == "baseline":
-        if pretrained_baseline:
-            model = Baseline.from_pretrained("dandelin/vilt-b32-finetuned-vqa").to(device)
-        else:
-            model = Baseline(ViltConfig()).to(device)
+        model = MultiviewViltForQuestionAnsweringBaseline(set, img_seq_len, emb_dim, pretrained_baseline, pretrained_baseline, img_lvl_pos_emb).to(device)
 
         # If we use pretrained weights and we don't want to fine tune the whole model (we only want to learn the VQA head and the set_positional_embedding because
         # they were initialized randomly), then we set requires_grad = False for all the other parameters.
@@ -174,7 +171,7 @@ def train(hyperparameters: defaultdict,
             for param in model.parameters():
                 param.requires_grad = False
 
-        model.classifier = nn.Sequential(
+        model.model.classifier = nn.Sequential(
             nn.Linear(emb_dim, 1536),
             nn.LayerNorm(1536),
             nn.GELU(),
