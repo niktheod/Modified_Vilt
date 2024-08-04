@@ -27,9 +27,9 @@ class DoubleVilt(nn.Module):
         self.img_attn = nn.MultiheadAttention(emb_dim, 12, batch_first=True)
 
         if pretrained_final_model:
-            self.final_model = ViltForQuestionAnswering.from_pretrained("dandelin/vilt-b32-finetuned-vqa")
+            self.final_model = MultiviewViltForQuestionAnswering.from_pretrained("dandelin/vilt-b32-finetuned-vqa")
         else:
-            self.final_model = ViltForQuestionAnswering(ViltConfig())
+            self.final_model = MultiviewViltForQuestionAnswering(ViltConfig2())
 
         self.set_size = set_size
         self.img_seq_len = img_seq_len
@@ -54,38 +54,38 @@ class DoubleVilt(nn.Module):
     ):
         # Get the output from the first ViLT (the hidden states)
         first_output = self.baseline(input_ids, attention_mask, token_type_ids, pixel_values, pixel_mask, head_mask, inputs_embeds, image_embeds,
-                                     labels, output_attentions, output_hidden_states, return_dict).last_hidden_state
-        
-        batch_size = first_output.shape[0]
+                                     labels, output_attentions, output_hidden_states, return_dict)
 
         # Get the [CLS] tokens of the question and of each image in the image set
         idx = 0
-        questions = first_output[:, idx].unsqueeze(1)
+        question_vectors = first_output.pooler_output.unsqueeze(1)
         idx += self.question_seq_len
 
         images = []
         for _ in range(self.set_size):
-            images.append(first_output[:, idx])
+            images.append(first_output[0][:, idx])
             idx += self.img_seq_len
 
         # Concatenate the [CLS] tokens of the images in the image set
         images = torch.stack(images, dim=1)
+
+        # print(question_vectors.shape)
+        # print(question_vectors)
+        # print(images.shape)
+        # print(images)
+        # raise ValueError
         
         # Get the attention scores of the question-guided attention on the images. Each score will show how relevant is each image for the question
-        _, attn_scores = self.img_attn(questions, images, images)
+        _, attn_scores = self.img_attn(question_vectors, images, images)
 
-        # Initialize a tensor that will represent the image set
-        image_set = torch.zeros(batch_size, self.img_seq_len, self.emb_dim).to(self.device)
+        weights = (attn_scores / attn_scores.max(dim=2)[0].unsqueeze(2)).squeeze()
+        print(weights)
+        weights = weights.unsqueeze(2).unsqueeze(3).unsqueeze(4)
 
-        # Create an embedded representation for the image set that is a weighted average of the images based on their attention score
-        idx = self.question_seq_len        
-        for i in range(self.set_size):
-            image_set += attn_scores[:, :, i].unsqueeze(2) * first_output[:, idx:(idx+self.img_seq_len)]
-            idx += self.img_seq_len
-
-        # Pass the question represantetion and the image set representation in a classic ViltForQuestionAnswering
-        return self.final_model(inputs_embeds=first_output[:, :self.question_seq_len], image_embeds=image_set, labels=labels)
-        # return self.final_model(inputs_embeds=torch.randn(batch_size, 40, 768).to("cuda"), image_embeds=torch.randn(batch_size, 210, 768).to("cuda"), labels=labels)
+        weighted_pixel_values = weights * pixel_values
+        new_pixel_mask = torch.ones_like(weighted_pixel_values[:, :, 0])
+                
+        return self.final_model(input_ids, attention_mask, token_type_ids, weighted_pixel_values, new_pixel_mask, labels=labels)
 
 
 class ImageSetQuestionAttention(nn.Module):
