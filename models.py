@@ -304,6 +304,7 @@ class ImageSetQuestionAttention(nn.Module):
         image_vectors = torch.stack(image_vectors, dim=1)
 
         _, attn_scores = self.attn(question_vector, image_vectors, image_vectors)
+        print(f"\t\t{attn_scores}")
 
         image_set = torch.zeros(batch_size, 197, 768).to(self.device)
 
