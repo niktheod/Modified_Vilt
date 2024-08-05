@@ -311,5 +311,5 @@ class ImageSetQuestionAttention(nn.Module):
         for i in range(set_size):
             image_set += attn_scores[:, :, i].unsqueeze(2) * images[:, i]
                 
-        return self.vilt(inputs_embeds=question.last_hidden_state, image_embeds=image_set, labels=labels)
+        return self.vilt(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, image_embeds=image_set, labels=labels)
     
