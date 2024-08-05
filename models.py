@@ -308,8 +308,8 @@ class ImageSetQuestionAttention(nn.Module):
         weights = (attn_scores / attn_scores.max(dim=2)[0].unsqueeze(2)).squeeze()
         noise_factor = 1 - weights
         print(f"\t\t{noise_factor}")
-        noise = torch.randn_like(noise_factor) * noise_factor
-        noise = noise.unsqueeze(2).unsqueeze(3).unsqueeze(4)
+        noise_factor = noise_factor.unsqueeze(2).unsqueeze(3).unsqueeze(4)
+        noise = torch.randn_like(pixel_values) * noise_factor
 
         # important_images = (attn_scores > self.threshold).squeeze()
         # important_image_cnt = important_images.sum(dim=1)
@@ -319,3 +319,4 @@ class ImageSetQuestionAttention(nn.Module):
         new_pixel_mask = torch.ones_like(altered_pixel_values[:, :, 0])
 
         return self.vilt(input_ids, attention_mask, token_type_ids, altered_pixel_values, new_pixel_mask, labels=labels)
+    
