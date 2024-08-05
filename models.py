@@ -184,10 +184,7 @@ class DoubleVilt(nn.Module):
 
         self.img_attn = nn.MultiheadAttention(emb_dim, 12, batch_first=True)
 
-        if pretrained_final_model:
-            self.final_model = ViltForQuestionAnswering.from_pretrained("dandelin/vilt-b32-finetuned-vqa")
-        else:
-            self.final_model = ViltForQuestionAnswering(ViltConfig())
+        self.final_model = MultiviewViltForQuestionAnsweringBaseline(set_size, img_seq_len, emb_dim, pretrained_final_model, pretrained_final_model, img_lvl_pos_emb)
 
         self.set_size = set_size
         self.img_seq_len = img_seq_len
@@ -232,17 +229,26 @@ class DoubleVilt(nn.Module):
         # Get the attention scores of the question-guided attention on the images. Each score will show how relevant is each image for the question
         _, attn_scores = self.img_attn(questions, images, images)
 
-        # Initialize a tensor that will represent the image set
-        image_set = torch.zeros(batch_size, self.img_seq_len, self.emb_dim).to(self.device)
+        # # Initialize a tensor that will represent the image set
+        # image_set = torch.zeros(batch_size, self.img_seq_len, self.emb_dim).to(self.device)
 
-        # Create an embedded representation for the image set that is a weighted average of the images based on their attention score
-        idx = self.question_seq_len        
-        for i in range(self.set_size):
-            image_set += attn_scores[:, :, i].unsqueeze(2) * first_output[:, idx:(idx+self.img_seq_len)]
-            idx += self.img_seq_len
+        # # Create an embedded representation for the image set that is a weighted average of the images based on their attention score
+        # idx = self.question_seq_len        
+        # for i in range(self.set_size):
+        #     image_set += attn_scores[:, :, i].unsqueeze(2) * first_output[:, idx:(idx+self.img_seq_len)]
+        #     idx += self.img_seq_len
 
-        # Pass the question represantetion and the image set representation in a classic ViltForQuestionAnswering
-        return self.final_model(inputs_embeds=first_output[:, :self.question_seq_len], image_embeds=image_set, labels=labels)
+        # # Pass the question represantetion and the image set representation in a classic ViltForQuestionAnswering
+        # return self.final_model(inputs_embeds=first_output[:, :self.question_seq_len], image_embeds=image_set, labels=labels)
+
+        weights = (attn_scores / attn_scores.max(dim=2)[0].unsqueeze(2)).squeeze()
+        print(f"\t\t{weights}")
+        weights = weights.unsqueeze(2).unsqueeze(3).unsqueeze(4)
+
+        scaled_pixel_values = pixel_values * weights
+        new_pixel_mask = torch.ones_like(scaled_pixel_values[:, :, 0])
+
+        return self.final_model(input_ids, attention_mask, token_type_ids, scaled_pixel_values, new_pixel_mask, labels=labels)
 
 
 class ImageSetQuestionAttention(nn.Module):
@@ -306,16 +312,10 @@ class ImageSetQuestionAttention(nn.Module):
 
         _, attn_scores = self.attn(question_vector, image_vectors, image_vectors)
         weights = (attn_scores / attn_scores.max(dim=2)[0].unsqueeze(2)).squeeze()
-        noise_factor = 1 - weights
-        print(f"\t\t{noise_factor}")
-        noise = torch.randn_like(noise_factor) * noise_factor
-        noise = noise.unsqueeze(2).unsqueeze(3).unsqueeze(4)
+        print(f"\t\t{weights}")
+        weights = weights.unsqueeze(2).unsqueeze(3).unsqueeze(4)
 
-        # important_images = (attn_scores > self.threshold).squeeze()
-        # important_image_cnt = important_images.sum(dim=1)
-        # print(f"\t\t{attn_scores}")
+        scaled_pixel_values = pixel_values * weights
+        new_pixel_mask = torch.ones_like(scaled_pixel_values[:, :, 0])
 
-        altered_pixel_values = pixel_values + noise
-        new_pixel_mask = torch.ones_like(altered_pixel_values[:, :, 0])
-
-        return self.vilt(input_ids, attention_mask, token_type_ids, altered_pixel_values, new_pixel_mask, labels=labels)
+        return self.vilt(input_ids, attention_mask, token_type_ids, scaled_pixel_values, new_pixel_mask, labels=labels)

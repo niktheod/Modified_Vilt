@@ -200,7 +200,7 @@ def train(hyperparameters: defaultdict,
                         parameter.requires_grad = False
                 
 
-        model.final_model.classifier = nn.Sequential(
+        model.final_model.model.classifier = nn.Sequential(
             nn.Linear(emb_dim, 1536),
             nn.LayerNorm(1536),
             nn.GELU(),
