@@ -259,10 +259,7 @@ class ImageSetQuestionAttention(nn.Module):
         
         self.attn = nn.MultiheadAttention(768, 12, batch_first=True)
 
-        if pretrained_vilt_version is None:
-            self.vilt = ViltForQuestionAnswering(ViltConfig())
-        else:
-            self.vilt = ViltForQuestionAnswering.from_pretrained(pretrained_vilt_version)
+        self.vilt = MultiviewViltForQuestionAnsweringBaseline(6, 50, 768, True, True, False)
         
         if not train_vit:
             for param in self.vit.parameters():
@@ -304,13 +301,17 @@ class ImageSetQuestionAttention(nn.Module):
         image_vectors = torch.stack(image_vectors, dim=1)
 
         _, attn_scores = self.attn(question_vector, image_vectors, image_vectors)
-        print(f"\t\t{attn_scores}")
+        penalty_scores = (1 - attn_scores).squeeze().softmax(dim=1)
+        print(f"\t\t{penalty_scores}")
 
-        image_set = torch.zeros(batch_size, 197, 768).to(self.device)
+        # image_set = torch.zeros(batch_size, 197, 768).to(self.device)
 
-        # Create an embedded representation for the image set that is a weighted average of the images based on their attention score      
-        for i in range(set_size):
-            image_set += attn_scores[:, :, i].unsqueeze(2) * images[:, i]
+        # # Create an embedded representation for the image set that is a weighted average of the images based on their attention score      
+        # for i in range(set_size):
+        #     image_set += attn_scores[:, :, i].unsqueeze(2) * images[:, i]
+
+        pixel_mask = torch.ones_like(pixel_values[:, :, 0])
                 
-        return self.vilt(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, image_embeds=image_set, labels=labels)
+        return self.vilt(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids, pixel_values=pixel_values,
+                         pixel_mask=pixel_mask, labels=labels, output_attentions=True), penalty_scores
     

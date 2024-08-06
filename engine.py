@@ -20,7 +20,7 @@ def max_to_one_hot(tensor: torch.Tensor) -> torch.Tensor:
     return one_hot_tensor
 
 
-def train_one_epoch(model, loader, optimizer, grad_accum_size, acc_fn, answ_len):
+def train_one_epoch(model, loader, optimizer, grad_accum_size, acc_fn, answ_len, lam: int = 1):
     """
     A function that trains the model by going through all the mini-batches in the training dataloader once.
     """
@@ -30,8 +30,17 @@ def train_one_epoch(model, loader, optimizer, grad_accum_size, acc_fn, answ_len)
     accum_acc = 0  # accumulation of the accuracy of each batch
     
     for i, (X, y) in enumerate(loader):
-        outputs = model(**X, labels=y)
-        loss = outputs.loss
+        outputs, attn_scores = model(**X, labels=y)
+        pred_loss = outputs.loss
+        img_attns = [outputs.attentions[11][:, :, :40, 40:90].sum(dim=(1, 2, 3)),
+                     outputs.attentions[11][:, :, :40, 90:140].sum(dim=(1, 2, 3)),
+                     outputs.attentions[11][:, :, :40, 140:190].sum(dim=(1, 2, 3)),
+                     outputs.attentions[11][:, :, :40, 190:240].sum(dim=(1, 2, 3)),
+                     outputs.attentions[11][:, :, :40, 240:290].sum(dim=(1, 2, 3)),
+                     outputs.attentions[11][:, :, :40, 290:].sum(dim=(1, 2, 3))]
+        img_attns = torch.stack(img_attns).permute(1, 0)
+        attn_loss = (attn_scores * img_attns).sum() + outputs.attentions[11][:, :, :40, :40].sum()
+        loss = pred_loss + lam * attn_loss
         loss /= grad_accum_size
         loss.backward()
         pred = max_to_one_hot(outputs.logits)
@@ -52,7 +61,7 @@ def train_one_epoch(model, loader, optimizer, grad_accum_size, acc_fn, answ_len)
     return avg_loss, avg_acc
 
 
-def val_step(model, loader, acc_fn, answ_len):
+def val_step(model, loader, acc_fn, answ_len, lam: int = 1):
     """
     A function that validates the model by going through all the mini-batches in the validation dataloader once.
     """
@@ -63,8 +72,17 @@ def val_step(model, loader, acc_fn, answ_len):
 
     with torch.inference_mode():
         for i, (X, y) in enumerate(loader):
-            outputs = model(**X, labels=y)
-            loss = outputs.loss
+            outputs, penalty_scores = model(**X, labels=y)
+            pred_loss = outputs.loss
+            img_attns = [outputs.attentions[11][:, :, :40, 40:90].sum(dim=(1, 2, 3)),
+                        outputs.attentions[11][:, :, :40, 90:140].sum(dim=(1, 2, 3)),
+                        outputs.attentions[11][:, :, :40, 140:190].sum(dim=(1, 2, 3)),
+                        outputs.attentions[11][:, :, :40, 190:240].sum(dim=(1, 2, 3)),
+                        outputs.attentions[11][:, :, :40, 240:290].sum(dim=(1, 2, 3)),
+                        outputs.attentions[11][:, :, :40, 290:].sum(dim=(1, 2, 3))]
+            img_attns = torch.stack(img_attns).permute(1, 0)
+            attn_loss = (penalty_scores * img_attns).sum() + outputs.attentions[11][:, :, :40, :40].sum()
+            loss = pred_loss + lam * attn_loss
             pred = max_to_one_hot(outputs.logits)
             acc = acc_fn(pred, y, answ_len)
 
