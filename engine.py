@@ -30,16 +30,9 @@ def train_one_epoch(model, loader, optimizer, grad_accum_size, acc_fn, answ_len,
     accum_acc = 0  # accumulation of the accuracy of each batch
     
     for i, (X, y) in enumerate(loader):
-        outputs, attn_scores = model(**X, labels=y)
+        outputs = model(**X, labels=y)
         pred_loss = outputs.loss
-        img_attns = [outputs.attentions[11][:, :, :40, 40:90].sum(dim=(1, 2, 3)),
-                     outputs.attentions[11][:, :, :40, 90:140].sum(dim=(1, 2, 3)),
-                     outputs.attentions[11][:, :, :40, 140:190].sum(dim=(1, 2, 3)),
-                     outputs.attentions[11][:, :, :40, 190:240].sum(dim=(1, 2, 3)),
-                     outputs.attentions[11][:, :, :40, 240:290].sum(dim=(1, 2, 3)),
-                     outputs.attentions[11][:, :, :40, 290:].sum(dim=(1, 2, 3))]
-        img_attns = torch.stack(img_attns).permute(1, 0)
-        attn_loss = (attn_scores * img_attns).sum() + outputs.attentions[11][:, :, :40, :40].sum()
+        attn_loss = outputs.attentions[11][:, :, :40, :40].sum()
         loss = pred_loss + lam * attn_loss
         loss /= grad_accum_size
         loss.backward()

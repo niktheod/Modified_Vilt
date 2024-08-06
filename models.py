@@ -155,7 +155,7 @@ class MultiviewViltForQuestionAnsweringBaseline(nn.Module):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         image_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
-        output_attentions: Optional[bool] = None,
+        output_attentions: Optional[bool] = True,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None
     ) -> Union[SequenceClassifierOutput, Tuple[torch.FloatTensor]]:
