@@ -91,11 +91,15 @@ def train(hyperparameters: defaultdict,
     percentage = hyperparameters["percentage"]
 
     # Define the paths for the train, val, and test sets
-    if percentage is None or percentage == 100:
-        train_path = f"{qa_path}/train_set.json"
+    if percentage == "trainval":
+        train_path = f"{qa_path}/trainval_set.json"
+        val_path = f"{qa_path}/test_set.json"
     else:
-        train_path = f"{qa_path}/train_set_{percentage}.json"
-    val_path = f"{qa_path}/val_set.json"
+        if percentage is None or percentage == 100:
+            train_path = f"{qa_path}/train_set.json"
+        else:
+            train_path = f"{qa_path}/train_set_{percentage}.json"
+        val_path = f"{qa_path}/val_set.json"
     answers_path = f"{qa_path}/answers.json"
     
     # Load the dataset (either ISVQA or NuScenesQA)
