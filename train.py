@@ -8,7 +8,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import StepLR
 from collections import defaultdict
-from isvqa_data_setup import ISVQA, ISVQAv2
+from isvqa_data_setup import ISVQA
 from nuscenesqa_data_setup import NuScenesQA
 from models import MultiviewViltForQuestionAnsweringBaseline, DoubleVilt, ImageSetQuestionAttention
 from engine import trainjob
@@ -264,7 +264,7 @@ def train(hyperparameters: defaultdict,
     grad_accum_size = hyperparameters["grad_accum_size"] if hyperparameters["grad_accum_size"] is not None else 1
 
     # Run the training job
-    results = trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, grad_accum_size, num_answers)
+    results = trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, grad_accum_size)
 
     # Define a setup dictionary that will be saved together with the results, in order to be able to remeber what setup gave the corresponding results
     if model_variation == "baseline":
