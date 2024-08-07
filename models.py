@@ -2,7 +2,7 @@ import torch
 
 from torch import nn
 from typing import Optional
-from transformers import ViltConfig, ViltModel, ViltForQuestionAnswering, ViTModel, ViTConfig, BertModel, BertConfig
+from transformers import ViltConfig, ViltModel, ViltForQuestionAnswering, ViTModel, ViTConfig, BertModel, BertConfig, BertTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPooling, SequenceClassifierOutput
 from typing import Tuple, Optional, Union
 
@@ -14,7 +14,14 @@ class ViltSetEmbeddings(nn.Module):
     It introduces a set of extra parameters (optional) for positional embedding on the image level (apart from the positional embedding on the patches
     that is already introduced in ViLT), in order to be able to easier say the images apart.
     """
-    def __init__(self, set_size: int, seq_len: int, emb_dim: int, pretrained: bool, vqa: bool, img_lvl_pos_embeddings: bool) -> None:
+
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    semantic_img_lvl_emb = BertModel.from_pretrained("bert-base-uncased").to("cuda")
+
+    for param in semantic_img_lvl_emb.parameters():
+        param.requires_grad = False
+
+    def __init__(self, set_size: int, seq_len: int, emb_dim: int, pretrained: bool, vqa: bool, img_lvl_pos_emb: bool) -> None:
         super().__init__()
         self.set_size = set_size
         self.seq_len = seq_len
@@ -29,10 +36,25 @@ class ViltSetEmbeddings(nn.Module):
         else:
             self.embeddings = ViltModel(ViltConfig(hidden_size=emb_dim)).embeddings
         
-        # Initialize the image level positional embeddings if needed
-        self.img_lvl_pos_embeddings = img_lvl_pos_embeddings
-        if img_lvl_pos_embeddings:
-            self.img_position_embedding = nn.Parameter(torch.zeros(set_size, seq_len, emb_dim))
+        # # Initialize the image level positional embeddings if needed
+        # self.img_lvl_pos_embeddings = img_lvl_pos_embeddings
+        # if img_lvl_pos_embeddings:
+        #     self.img_position_embedding = nn.Parameter(torch.zeros(set_size, seq_len, emb_dim))
+
+        semantic_directions = ["front_left", "front", "front_right", "back_left", "back", "back_right"]
+
+        semantic_embeddings = []
+        for semantic_dir in semantic_directions:
+            semantic_embeddings.append(ViltSetEmbeddings.get_word_embeddings(semantic_dir).squeeze())
+        self.semantic_embeddings = torch.stack(semantic_embeddings).unsqueeze(0).repeat(4, 1, 1, 1)
+
+    @classmethod
+    def get_word_embeddings(cls, text):
+        inputs = cls.tokenizer(text, return_tensors='pt', max_length=5, padding="max_length")
+        inputs = {key: value.to("cuda") for key, value in inputs.items()}
+        outputs = cls.semantic_img_lvl_emb(**inputs)
+        embeddings = outputs.last_hidden_state
+        return embeddings
 
     def forward(
         self,
@@ -68,8 +90,9 @@ class ViltSetEmbeddings(nn.Module):
 
         # Stack all the visual embeddings together to create the embedding representation of the whole set
         visual_embeds_tensor = torch.stack(visual_embeds)
-        if self.img_lvl_pos_embeddings:  # add the image level positional embeddings if needed
-            visual_embeds_tensor += self.img_position_embedding
+        # if self.img_lvl_pos_embeddings:  # add the image level positional embeddings if needed
+        #     visual_embeds_tensor += self.img_position_embedding
+        visual_embeds_tensor = torch.cat([visual_embeds_tensor, self.semantic_embeddings], dim=2)
 
         # Reshape the visual embeddings from shape (batch_size, num_images, seq_length, emb_dimension) to (batch_size, [num_imges * seq_length], emb_dimension)
         # in order for the attention layer to be able to process it, as it can not process 4D tensors.
@@ -77,6 +100,7 @@ class ViltSetEmbeddings(nn.Module):
 
         # Repeat the same process for the masks (apart from adding the image level positional embeddings)
         visual_masks_tensor = torch.stack(visual_masks)
+        visual_masks_tensor = torch.cat([visual_masks_tensor, torch.ones(4, 6, 5).to("cuda")], dim=2)
         visual_masks_tensor = visual_masks_tensor.flatten(1, 2)
 
         # Concatenate the two modalities together
