@@ -10,7 +10,6 @@ from torch.optim.lr_scheduler import StepLR
 from collections import defaultdict
 from isvqa_data_setup import ISVQA, ISVQAv2
 from nuscenesqa_data_setup import NuScenesQA
-from transformers import ViltModel
 from models import MultiviewViltForQuestionAnsweringBaseline, DoubleVilt, ImageSetQuestionAttention
 from engine import trainjob
 from nuscenes.nuscenes import NuScenes
@@ -54,7 +53,10 @@ def save_plots(results: Tuple[List[float], List[float], List[float], List[float]
     plt.clf()
 
 
-def count_parameters(model):
+def count_parameters(model: nn.Module):
+    """
+    A function that prints the trainble parameters of the model that will be trained.
+    """
     table = PrettyTable(["Modules", "Parameters"])
     total_params = 0
     cnt = 0
@@ -84,6 +86,13 @@ def train(hyperparameters: defaultdict,
           best_baseline: str = None,
           scheduler_type: str = None,
           device: str = device):
+    """
+    A function that automatically runs the training pipeline.
+    First, it creates the dataset and dataloader objects that will be used for training and validation.
+    Second, it initializes the model that will be trained and changes the head of it (classifier) to match the number of answers of the dataset of choice.
+    Then, it runs the training job according to the defined hyperpaameters.
+    Finally, it saves the results (numbers and plots) as wel as a setup file with all the details (hyperparameters, dataset etc.) of the current training job.
+    """
     
     seed = hyperparameters["seed"] if hyperparameters["seed"] is not None else 42
 
@@ -101,28 +110,21 @@ def train(hyperparameters: defaultdict,
             train_path = f"{qa_path}/train_set_{percentage}.json"
         val_path = f"{qa_path}/val_set.json"
     answers_path = f"{qa_path}/answers.json"
+
+    processor_type = "vit" if model_variation == "vit_vilt" else "vilt"
     
     # Load the dataset (either ISVQA or NuScenesQA)
     if dataset == "isvqa":
-        if model_variation != "vit_vilt":
-            train_set = ISVQA(qa_path=train_path,
-                            nuscenes_path=nuscenes_path,
-                            answers_path=answers_path,
-                            device=device)
-            
-            val_set = ISVQA(qa_path=val_path,
-                            nuscenes_path=nuscenes_path,
-                            answers_path=answers_path,
-                            device=device)
-        else:
-            train_set = ISVQAv2(qa_path=train_path,
-                          nuscenes_path=nuscenes_path,
-                          answers_path=answers_path,
-                          device=device)
-        
-            val_set = ISVQAv2(qa_path=val_path,
+        train_set = ISVQA(qa_path=train_path,
                         nuscenes_path=nuscenes_path,
                         answers_path=answers_path,
+                        processor_type=processor_type,
+                        device=device)
+        
+        val_set = ISVQA(qa_path=val_path,
+                        nuscenes_path=nuscenes_path,
+                        answers_path=answers_path,
+                        processor_type=processor_type,
                         device=device)
 
         num_answers = len(train_set.answers)
@@ -134,12 +136,14 @@ def train(hyperparameters: defaultdict,
                                nusc=nusc,
                                nuscenes_path=nuscenes_path,
                                answers_path=answers_path,
+                               processor_type=processor_type,
                                device=device)
         
         val_set = NuScenesQA(qa_path=val_path,
                              nusc=nusc,
                              nuscenes_path=nuscenes_path,
                              answers_path=answers_path,
+                             processor_type=processor_type,
                              device=device)
 
         num_answers = len(train_set.answers)
@@ -169,8 +173,7 @@ def train(hyperparameters: defaultdict,
     if model_variation == "baseline":
         model = MultiviewViltForQuestionAnsweringBaseline(set, img_seq_len, emb_dim, pretrained_baseline, pretrained_baseline, img_lvl_pos_emb).to(device)
 
-        # If we use pretrained weights and we don't want to fine tune the whole model (we only want to learn the VQA head and the set_positional_embedding because
-        # they were initialized randomly), then we set requires_grad = False for all the other parameters.
+        # If we use pretrained weights and we don't want to fine tune the whole model (we only want to learn the VQA head), then we set requires_grad = False for all the other parameters.
         if not fine_tune_all and pretrained_baseline:
             for param in model.parameters():
                 param.requires_grad = False
@@ -227,9 +230,11 @@ def train(hyperparameters: defaultdict,
     else:
         raise ValueError("model_variation should be either 'baseline' or 'double_vilt' or 'vit_vilt'")
     
+    # Print the parameters to be trained
     print("Parameters to be trained: ")
     count_parameters(model)
 
+    # Define and setup all the necessary hyperparameters and objects for training
     weight_decay = hyperparameters["weight_decay"] if hyperparameters["weight_decay"] is not None else 0
 
     optimizer_name = "adam" if hyperparameters["optimizer_name"] is None else hyperparameters["optimizer_name"]
@@ -258,6 +263,7 @@ def train(hyperparameters: defaultdict,
 
     grad_accum_size = hyperparameters["grad_accum_size"] if hyperparameters["grad_accum_size"] is not None else 1
 
+    # Run the training job
     results = trainjob(model, epochs, train_loader, val_loader, optimizer, scheduler, grad_accum_size, num_answers)
 
     # Define a setup dictionary that will be saved together with the results, in order to be able to remeber what setup gave the corresponding results
@@ -342,3 +348,4 @@ def train(hyperparameters: defaultdict,
                path=results_folder)
     
     print("Done!")
+    print(f"Results filename: {title}")

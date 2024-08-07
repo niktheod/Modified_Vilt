@@ -62,10 +62,10 @@ class ViltSetProcessor():
                                         return_attention_mask=True,
                                         return_token_type_ids=True)
         
-        # Secondly process the set of images
+        # Second process the set of images
         processed_img = self.image_set_processor(image_set)
 
-        # Combine them all together in a dictionary like ViltProcessor does
+        # Combine them together in a dictionary like ViltProcessor does
         inputs = OrderedDict({
             "input_ids": processed_text["input_ids"].squeeze().to(self.device),
             "token_type_ids": processed_text["token_type_ids"].squeeze().to(self.device),
@@ -79,28 +79,31 @@ class ViltSetProcessor():
 
 class ViTImageSetProcessor():
     """
-    A class based on ViltImageProcessor with the difference that it handles sets of images instead of individual images.
+    A class based on ViTImageProcessor with the difference that it handles sets of images instead of individual images.
     """
     def __init__(self) -> None:
         self.processor = ViTImageProcessor(do_rescale=False)
-        self.transform = transforms.ToTensor()
+        # self.transform = transforms.ToTensor()
 
     def __call__(self, 
                  image_set: List[List[Image.Image]]) -> OrderedDict:
 
         pixel_values = []
+        pixel_mask = []
 
         # Process the images in the set one by one and add them in the lists
         for image in image_set:
-            image = self.transform(image)
+            # image = self.transform(image)
             processed_img = self.processor(image, return_tensors="pt")
 
             pixel_values.append(processed_img["pixel_values"])
+            pixel_mask.append(processed_img["pixel_mask"])
 
         # Create a dictionary similar to the one that ViltImageProcessor returns, whith the difference that pixel values will be of shape 
         # (num_images, C, H, W) and pixel mask (num_images, H, W)
         processed_set = OrderedDict({
-            "pixel_values": torch.stack(pixel_values)
+            "pixel_values": torch.stack(pixel_values),
+            "pixel_mask": torch.stack(pixel_mask)
         })
 
         return processed_set
@@ -128,7 +131,7 @@ class ViTSetProcessor():
                                         return_attention_mask=True,
                                         return_token_type_ids=True)
         
-        # Secondly process the set of images
+        # Second process the set of images
         processed_img = self.image_set_processor(image_set)
 
         # Combine them all together in a dictionary like ViltProcessor does
@@ -136,7 +139,8 @@ class ViTSetProcessor():
             "input_ids": processed_text["input_ids"].squeeze().to(self.device),
             "token_type_ids": processed_text["token_type_ids"].squeeze().to(self.device),
             "attention_mask": processed_text["attention_mask"].squeeze().to(self.device),
-            "pixel_values": processed_img["pixel_values"].squeeze().to(self.device)
+            "pixel_values": processed_img["pixel_values"].squeeze().to(self.device),
+            "pixel_mask": processed_img["pixel_mask"].squeeze().to(self.device)
         })
 
         return inputs

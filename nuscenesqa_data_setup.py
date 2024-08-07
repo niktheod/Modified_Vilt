@@ -6,7 +6,7 @@ import nuscenes
 from torch.utils.data import Dataset
 from PIL import Image
 from typing import List, Tuple
-from utility import ViltSetProcessor
+from utility import ViltSetProcessor, ViTSetProcessor
 
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -14,17 +14,25 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 class NuScenesQA(Dataset):
     """
-    A class that loads the NuScenesQA dataset in the form of a torch.utils.data.Dataset object.
+    A class that loads the NuScenes-QA dataset in the form of a torch.utils.data.Dataset object.
     """
-    def __init__(self, qa_path: str, nusc: nuscenes.nuscenes.NuScenes, nuscenes_path: str, answers_path: str, device=device) -> None:
+    def __init__(self, qa_path: str, nusc: nuscenes.nuscenes.NuScenes, nuscenes_path: str, answers_path: str, processor_type: str, device=device) -> None:
         super().__init__()
         self.device = device
         self.qa_set = self.load_nuscenesqa(qa_path)  # a list of dictionaries that contain all the sampleTokens-Question-Answer pairs
         self.nuscenes_path = nuscenes_path
         self.nusc = nusc
-        self.answers = self.get_unique_answers(answers_path)  # a list of all the unique answers in the ISVQA dataset
-        self.processor = ViltSetProcessor(device=device)  # the processor that will take as input the PIL images and the question and will return
-        # them in a format compatible to be used as inputs for the MultivieViltModel
+        self.answers = self.get_unique_answers(answers_path)  # a list of all the unique answers in the NuScenes-QA dataset
+
+        if processor_type == "vilt":
+            self.processor = ViltSetProcessor(device=device)  # the processor that will take as input the PIL images and the question and will return
+                                                          # them in a format compatible to be used as inputs for the MultivieViltModel
+        elif processor_type == "vit":
+            self.processor = ViTSetProcessor()  # the processor that will take as input the PIL images and the question and will return
+                                                # them in a format compatible to be used as inputs for ViLT however the images will be of the size that is
+                                                # compatible with ViT (224x224) because they'll be first processed by a ViT.
+        else:
+            raise ValueError("processor_type should be either 'vilt' or 'vit'.")
 
     @staticmethod
     def load_nuscenesqa(path: str) -> List[dict]:
