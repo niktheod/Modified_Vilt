@@ -59,7 +59,7 @@ class ViltSetEmbeddings(nn.Module):
         
         # Go through each image in the set, calculate the embeddings, add the modality embeddings, and save them in the list
         for image, mask in zip(pixel_values, pixel_mask):
-            embedding, emb_mask, _ = self.visual_embed(image, mask, max_image_length=self.embeddings.config.max_image_length)
+            embedding, emb_mask, _ = self.embeddings.visual_embed(image, mask, max_image_length=self.embeddings.config.max_image_length)
             embedding += self.embeddings.token_type_embeddings(torch.ones_like(emb_mask, dtype=torch.long, device=text_embeds.device))
 
             visual_embeds.append(embedding)
