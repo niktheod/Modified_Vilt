@@ -38,7 +38,12 @@ def train_one_epoch(model: nn.Module,
     accum_acc = 0  # accumulation of the accuracy of each batch
     
     for i, (X, y) in enumerate(loader):
-        outputs = model(**X, labels=y)
+        if i == 5072:
+                outputs = model(input_ids=X["input_ids"], attention_mask=X["attention_mask"], token_type_ids=X["token_type_ids"],
+                                pixel_values=((torch.rand(7, 6, 3, 352, 608) * 2) - 1).to("cuda"), pixel_mask=torch.ones(7, 6, 352, 608).to("cuda"), labels=y)
+        else:
+            outputs = model(input_ids=X["input_ids"], attention_mask=X["attention_mask"], token_type_ids=X["token_type_ids"],
+                            pixel_values=((torch.rand(8, 6, 3, 352, 608) * 2) - 1).to("cuda"), pixel_mask=torch.ones(8, 6, 352, 608).to("cuda"), labels=y)
         loss = outputs.loss
         loss /= grad_accum_size
         loss.backward()
@@ -73,7 +78,12 @@ def val_step(model: nn.Module,
 
     with torch.inference_mode():
         for i, (X, y) in enumerate(loader):
-            outputs = model(**X, labels=y)
+            if i == 319:
+                outputs = model(input_ids=X["input_ids"], attention_mask=X["attention_mask"], token_type_ids=X["token_type_ids"],
+                                pixel_values=((torch.rand(4, 6, 3, 352, 608) * 2) - 1).to("cuda"), pixel_mask=torch.ones(4, 6, 352, 608).to("cuda"), labels=y)
+            else:
+                outputs = model(input_ids=X["input_ids"], attention_mask=X["attention_mask"], token_type_ids=X["token_type_ids"],
+                                pixel_values=((torch.rand(8, 6, 3, 352, 608) * 2) - 1).to("cuda"), pixel_mask=torch.ones(8, 6, 352, 608).to("cuda"), labels=y)
             loss = outputs.loss
             pred = max_to_one_hot(outputs.logits)
             acc = acc_fn(pred, y)
