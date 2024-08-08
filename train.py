@@ -171,12 +171,13 @@ def train(hyperparameters: defaultdict,
 
     # Define the model
     if model_variation == "baseline":
-        model = MultiviewViltForQuestionAnsweringBaseline(set, img_seq_len, emb_dim, pretrained_baseline, pretrained_baseline, img_lvl_pos_emb).to(device)
+        model = MultiviewViltForQuestionAnsweringBaseline(set_size, img_seq_len, emb_dim, pretrained_baseline, pretrained_baseline, img_lvl_pos_emb).to(device)
 
         # If we use pretrained weights and we don't want to fine tune the whole model (we only want to learn the VQA head), then we set requires_grad = False for all the other parameters.
         if not fine_tune_all and pretrained_baseline:
-            for param in model.parameters():
-                param.requires_grad = False
+            for name, param in model.named_parameters():
+                if name[-10:] != "img_cls_id":
+                    param.requires_grad = False
 
         model.model.classifier = nn.Sequential(
             nn.Linear(emb_dim, 1536),
